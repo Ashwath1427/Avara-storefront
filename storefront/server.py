@@ -7,6 +7,7 @@ import smtplib
 import sqlite3
 import ssl
 import time
+import urllib.request
 from email.message import EmailMessage
 from pathlib import Path
 
@@ -103,6 +104,19 @@ def _deliver_order_email(order_id: int, name: str, email: str, plan: str, addon:
         except (OSError, smtplib.SMTPException):
             continue
 
+def _save_supabase_order(order_id: int, user_id: int, name: str, email: str, plan: str, addon: str):
+    url = os.environ.get('SUPABASE_URL', '').rstrip('/')
+    key = os.environ.get('SUPABASE_SERVICE_ROLE_KEY', '')
+    if not url or not key:
+        return
+    import json
+    payload = json.dumps({'local_order_id': order_id, 'user_name': name, 'customer_email': email, 'plan': plan, 'addon': addon}).encode()
+    req = urllib.request.Request(url + '/rest/v1/orders', data=payload, method='POST', headers={'apikey': key, 'Authorization': 'Bearer ' + key, 'Content-Type': 'application/json', 'Prefer': 'return=minimal'})
+    try:
+        urllib.request.urlopen(req, timeout=8).read()
+    except Exception:
+        pass
+
 @app.post('/api/order')
 def order(data: Order, request: Request, background_tasks: BackgroundTasks):
     user_id, name, email = session(request)
@@ -119,5 +133,6 @@ def order(data: Order, request: Request, background_tasks: BackgroundTasks):
         order_id = cur.lastrowid
     if test_mode and (not smtp_user or not smtp_password):
         return {'message': f'Test order #{order_id} saved locally. No email was sent and no payment was collected.'}
+    background_tasks.add_task(_save_supabase_order, order_id, user_id, name, email, data.plan, data.addon)
     background_tasks.add_task(_deliver_order_email, order_id, name, email, data.plan, data.addon, smtp_user, smtp_password)
-    return {'message':f'Cash order #{order_id} was received. Your request is being sent to the AVARA owner now.'}
+    return {'message':f'Cash order #{order_id} was received and recorded. Email delivery is processing in the background.'}
