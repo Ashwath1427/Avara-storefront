@@ -96,12 +96,12 @@ def account(data: Account, background_tasks: BackgroundTasks):
             con.execute('INSERT INTO users(name,email,salt,password) VALUES(?,?,?,?)', (name,email,salt,hashed))
     except sqlite3.IntegrityError:
         raise HTTPException(409, 'This account already exists. Please sign in.')
+    background_tasks.add_task(_sync_supabase_account, email, name)
     return {'message':'Account created. Please sign in.'}
 
 @app.post('/api/login')
 def login(data: Credentials, background_tasks: BackgroundTasks):
     with db() as con:
-    background_tasks.add_task(_sync_supabase_account, email, name)
         row = con.execute('SELECT id,salt,password,name FROM users WHERE email=?', (data.email.strip().lower(),)).fetchone()
         salt = row[1] if row else bytes(16)
         value = hashlib.scrypt(data.password.encode(), salt=salt, n=16384, r=8, p=1)
@@ -112,14 +112,9 @@ def login(data: Credentials, background_tasks: BackgroundTasks):
     from fastapi.responses import JSONResponse
     response = JSONResponse({'message':'Signed in.', 'name': row[3]})
     response.set_cookie('avara_store_session', token, httponly=True, secure=os.environ.get('AVARA_STORE_SECURE_COOKIE','1') == '1', samesite='strict', max_age=86400)
+    background_tasks.add_task(_sync_supabase_account, data.email.strip().lower(), row[3])
     return response
 
-def _send_order_email(order_id, name, email, plan, addon, transport):
-    msg = EmailMessage()
-    msg['To'] = 'kasula.ashwath3180076@gmail.com'
-    background_tasks.add_task(_sync_supabase_account, data.email.strip().lower(), row[3])
-    msg['Subject'] = f'AVARA cash order #{order_id}'
-    msg.set_content(f'Order #{order_id}\nCustomer: {name}\nEmail: {email}\nPlan: {plan}\nAdd-on: {addon}\nPayment: cash\nTerms: draft-1 accepted')
 def _sync_supabase_account(email: str, display_name: str):
     url = os.getenv('SUPABASE_URL', '').strip().rstrip('/')
     key = os.getenv('SUPABASE_SERVICE_ROLE_KEY', '').strip()
@@ -147,6 +142,11 @@ def _sync_supabase_account(email: str, display_name: str):
     except (OSError, ValueError) as exc:
         logger.warning('Supabase storefront account sync failed (%s)', type(exc).__name__)
 
+def _send_order_email(order_id, name, email, plan, addon, transport):
+    msg = EmailMessage()
+    msg['To'] = 'kasula.ashwath3180076@gmail.com'
+    msg['Subject'] = f'AVARA cash order #{order_id}'
+    msg.set_content(f'Order #{order_id}\nCustomer: {name}\nEmail: {email}\nPlan: {plan}\nAdd-on: {addon}\nPayment: cash\nTerms: draft-1 accepted')
     if transport == 'resend':
         payload = {'from': os.getenv('AVARA_STORE_EMAIL_FROM', 'AVARA Orders <onboarding@resend.dev>'),
                    'to': [str(msg['To'])], 'subject': str(msg['Subject']), 'text': msg.get_content()}
