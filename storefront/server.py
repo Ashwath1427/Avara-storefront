@@ -10,7 +10,7 @@ import time
 from email.message import EmailMessage
 from pathlib import Path
 
-from fastapi import FastAPI, HTTPException, Request
+from fastapi import BackgroundTasks, FastAPI, HTTPException, Request
 from fastapi.responses import FileResponse
 from pydantic import BaseModel, Field
 
@@ -84,8 +84,27 @@ def login(data: Account):
     response.set_cookie('avara_store_session', token, httponly=True, secure=os.environ.get('AVARA_STORE_SECURE_COOKIE','1') == '1', samesite='strict', max_age=86400)
     return response
 
+def _deliver_order_email(order_id: int, name: str, email: str, plan: str, addon: str, smtp_user: str, smtp_password: str):
+    msg = EmailMessage()
+    msg['From'] = smtp_user
+    msg['To'] = 'kasula.ashwath3180076@gmail.com'
+    msg['Reply-To'] = email
+    msg['Subject'] = f'AVARA cash order #{order_id}'
+    msg.set_content(f'Order #{order_id}\nCustomer: {name}\nEmail: {email}\nPlan: {plan}\nAdd-on: {addon}\nPayment: cash\nTerms: draft-1 accepted')
+    for mode in ('starttls', 'ssl'):
+        try:
+            if mode == 'ssl':
+                with smtplib.SMTP_SSL('smtp.gmail.com', 465, timeout=8, context=ssl.create_default_context()) as smtp:
+                    smtp.login(smtp_user, smtp_password); smtp.send_message(msg)
+            else:
+                with smtplib.SMTP('smtp.gmail.com', 587, timeout=8) as smtp:
+                    smtp.ehlo(); smtp.starttls(context=ssl.create_default_context()); smtp.ehlo(); smtp.login(smtp_user, smtp_password); smtp.send_message(msg)
+            return
+        except (OSError, smtplib.SMTPException):
+            continue
+
 @app.post('/api/order')
-def order(data: Order, request: Request):
+def order(data: Order, request: Request, background_tasks: BackgroundTasks):
     user_id, name, email = session(request)
     if not data.accepted or data.plan not in ('Basic — ₹299/month','Pro — ₹599/month') or data.addon not in ('None','Setup assistance — discuss availability'):
         raise HTTPException(400, 'Select a valid plan and accept the terms.')
@@ -100,30 +119,5 @@ def order(data: Order, request: Request):
         order_id = cur.lastrowid
     if test_mode and (not smtp_user or not smtp_password):
         return {'message': f'Test order #{order_id} saved locally. No email was sent and no payment was collected.'}
-    msg = EmailMessage()
-    msg['From'] = smtp_user
-    msg['To'] = 'kasula.ashwath3180076@gmail.com'
-    msg['Reply-To'] = email
-    msg['Subject'] = f'AVARA cash order #{order_id}'
-    msg.set_content(f'Order #{order_id}\nCustomer: {name}\nEmail: {email}\nPlan: {data.plan}\nAdd-on: {data.addon}\nPayment: cash\nTerms: draft-1 accepted')
-    delivered = False
-    for mode in ('starttls', 'ssl'):
-        try:
-            if mode == 'ssl':
-                with smtplib.SMTP_SSL('smtp.gmail.com', 465, timeout=20, context=ssl.create_default_context()) as smtp:
-                    smtp.login(smtp_user, smtp_password)
-                    smtp.send_message(msg)
-            else:
-                with smtplib.SMTP('smtp.gmail.com', 587, timeout=20) as smtp:
-                    smtp.ehlo()
-                    smtp.starttls(context=ssl.create_default_context())
-                    smtp.ehlo()
-                    smtp.login(smtp_user, smtp_password)
-                    smtp.send_message(msg)
-            delivered = True
-            break
-        except (OSError, smtplib.SMTPException):
-            continue
-    if not delivered:
-        return {'message':f'Order #{order_id} was saved, but email delivery failed. Contact the AVARA owner with this order number.'}
-    return {'message':f'Cash order #{order_id} was saved and the notification was sent. The owner will contact you to arrange payment.'}
+    background_tasks.add_task(_deliver_order_email, order_id, name, email, data.plan, data.addon, smtp_user, smtp_password)
+    return {'message':f'Cash order #{order_id} was received. Your request is being sent to the AVARA owner now.'}
