@@ -90,7 +90,8 @@ def order(data: Order, request: Request):
     if not data.accepted or data.plan not in ('Basic — ₹299/month','Pro — ₹599/month') or data.addon not in ('None','Setup assistance — discuss availability'):
         raise HTTPException(400, 'Select a valid plan and accept the terms.')
     smtp_user = os.environ.get('AVARA_STORE_SMTP_USER')
-    smtp_password = os.environ.get('AVARA_STORE_SMTP_PASSWORD')
+    # Google displays App Passwords in four-character groups; accept either form.
+    smtp_password = ''.join(os.environ.get('AVARA_STORE_SMTP_PASSWORD', '').split())
     test_mode = os.environ.get('AVARA_STORE_TEST_MODE') == '1' and request.client and request.client.host in ('127.0.0.1', '::1')
     if (not smtp_user or not smtp_password) and not test_mode:
         raise HTTPException(503, 'Orders are unavailable until email notifications are configured.')
