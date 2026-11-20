@@ -42,6 +42,8 @@ class DeliveryTests(unittest.TestCase):
             'AVARA_BASIC_ZIP': str(self.bundle),
             'RESEND_API_KEY': 'test-resend-key',
             'AVARA_STORE_PUBLIC_URL': 'https://avara.example',
+            'SUPABASE_URL': '',
+            'SUPABASE_SERVICE_ROLE_KEY': '',
         }, clear=False)
         self.env.start()
         self.addCleanup(self.env.stop)
@@ -114,6 +116,25 @@ class DeliveryTests(unittest.TestCase):
                         BackgroundTasks(),
                     )
         self.assertEqual(error.exception.status_code, 400)
+
+    def test_private_supabase_storage_can_supply_release_bundle(self):
+        self.bundle.unlink()
+        captured = {}
+
+        def fake_open(request, timeout=0):
+            captured['url'] = request.full_url
+            captured['method'] = request.method
+            return FakeResponse()
+
+        with patch.dict('os.environ', {
+            'SUPABASE_URL': 'https://project.supabase.co',
+            'SUPABASE_SERVICE_ROLE_KEY': 'service-role-test-key',
+            'AVARA_RELEASE_BUCKET': 'avara-releases',
+        }, clear=False):
+            with patch('urllib.request.urlopen', fake_open):
+                self.assertTrue(server.plan_bundle_ready('Basic — ₹150/month'))
+        self.assertEqual(captured['method'], 'HEAD')
+        self.assertIn('/storage/v1/object/authenticated/avara-releases/avara-basic.zip', captured['url'])
 
 
 if __name__ == '__main__':

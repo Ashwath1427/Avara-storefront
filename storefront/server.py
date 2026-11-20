@@ -11,12 +11,13 @@ import ssl
 import time
 import urllib.request
 from urllib.error import HTTPError
+from urllib.parse import quote
 from email.message import EmailMessage
 from contextlib import contextmanager
 from pathlib import Path
 
 from fastapi import BackgroundTasks, FastAPI, HTTPException, Request
-from fastapi.responses import FileResponse
+from fastapi.responses import FileResponse, StreamingResponse
 from pydantic import BaseModel, Field
 
 ROOT = Path(__file__).resolve().parent
@@ -89,10 +90,48 @@ def plan_slug(plan: str):
     raise HTTPException(400, 'This order has an unknown plan.')
 
 
+def plan_filename(plan: str):
+    return f'avara-{plan_slug(plan)}.zip'
+
+
 def plan_bundle(plan: str):
     slug = plan_slug(plan)
     configured = os.getenv(f'AVARA_{slug.upper()}_ZIP', '').strip()
-    return Path(configured) if configured else ROOT / 'deliverables' / f'avara-{slug}.zip'
+    return Path(configured) if configured else ROOT / 'deliverables' / plan_filename(plan)
+
+
+def storage_request(plan: str, method='GET'):
+    url = os.getenv('SUPABASE_URL', '').strip().rstrip('/')
+    key = os.getenv('SUPABASE_SERVICE_ROLE_KEY', '').strip()
+    bucket = os.getenv('AVARA_RELEASE_BUCKET', 'avara-releases').strip()
+    if not url or not key or not bucket:
+        return None
+    slug = plan_slug(plan)
+    object_name = os.getenv(f'AVARA_{slug.upper()}_STORAGE_OBJECT', plan_filename(plan)).strip()
+    if not object_name:
+        return None
+    headers = {'apikey': key, 'Cache-Control': 'no-store'}
+    if not key.startswith('sb_secret_'):
+        headers['Authorization'] = 'Bearer ' + key
+    path = '/'.join(quote(part, safe='') for part in object_name.split('/'))
+    return urllib.request.Request(
+        f'{url}/storage/v1/object/authenticated/{quote(bucket, safe="")}/{path}',
+        headers=headers,
+        method=method,
+    )
+
+
+def plan_bundle_ready(plan: str):
+    if plan_bundle(plan).is_file():
+        return True
+    request = storage_request(plan, 'HEAD')
+    if not request:
+        return False
+    try:
+        with urllib.request.urlopen(request, timeout=8):
+            return True
+    except (HTTPError, OSError, ValueError):
+        return False
 
 
 def email_transport():
@@ -119,7 +158,7 @@ def customer_orders(request: Request):
     return {'orders': [
         {'id': row[0], 'plan': row[1], 'addon': row[2], 'created': row[3], 'status': row[4],
          'approved_at': row[5], 'delivery_email_status': row[6],
-         'download_ready': row[4] == 'approved' and plan_bundle(row[1]).is_file()}
+         'download_ready': row[4] == 'approved' and plan_bundle_ready(row[1])}
         for row in rows
     ]}
 
@@ -133,10 +172,32 @@ def download_order(order_id: int, request: Request):
         raise HTTPException(404, 'Order not found.')
     if row[1] != 'approved':
         raise HTTPException(403, 'This order is not ready for download yet.')
-    bundle = plan_bundle(row[0])
-    if not bundle.is_file():
+    plan = row[0]
+    bundle = plan_bundle(plan)
+    if bundle.is_file():
+        return FileResponse(bundle, filename=bundle.name, media_type='application/zip', headers={'Cache-Control': 'no-store'})
+    storage = storage_request(plan)
+    if not storage:
         raise HTTPException(503, 'The release file is temporarily unavailable. Contact AVARA support.')
-    return FileResponse(bundle, filename=bundle.name, media_type='application/zip', headers={'Cache-Control': 'no-store'})
+    try:
+        upstream = urllib.request.urlopen(storage, timeout=20)
+    except HTTPError as exc:
+        logger.warning('Approved order %s release download HTTP %s', order_id, exc.code)
+        raise HTTPException(503, 'The release file is temporarily unavailable. Contact AVARA support.')
+    except (OSError, ValueError):
+        raise HTTPException(503, 'The release file is temporarily unavailable. Contact AVARA support.')
+
+    def stream_release():
+        try:
+            while chunk := upstream.read(1024 * 1024):
+                yield chunk
+        finally:
+            upstream.close()
+
+    return StreamingResponse(
+        stream_release(), media_type='application/zip',
+        headers={'Cache-Control': 'no-store', 'Content-Disposition': f'attachment; filename="{plan_filename(plan)}"'},
+    )
 
 @app.get('/api/order/{order_id}/notification')
 def order_notification(order_id: int, request: Request):
@@ -369,7 +430,7 @@ def admin_orders(request: Request):
     return {'orders': [
         {'id': row[0], 'name': row[1], 'email': row[2], 'plan': row[3], 'addon': row[4],
          'created': row[5], 'status': row[6], 'approved_at': row[7], 'delivery_email_status': row[8],
-         'bundle_ready': plan_bundle(row[3]).is_file()}
+         'bundle_ready': plan_bundle_ready(row[3])}
         for row in rows
     ]}
 
@@ -390,9 +451,8 @@ def approve_order(order_id: int, request: Request, background_tasks: BackgroundT
         plan, status, name, email = row
         if status == 'approved':
             return {'message': f'Order #{order_id} is already approved.', 'status': status}
-        bundle = plan_bundle(plan)
-        if not bundle.is_file():
-            raise HTTPException(409, f'Upload {bundle.name} before approving this order.')
+        if not plan_bundle_ready(plan):
+            raise HTTPException(409, f'Upload {plan_filename(plan)} before approving this order.')
         approved_at = int(time.time())
         con.execute(
             "UPDATE orders SET status='approved',approved_at=?,delivery_email_status='pending' WHERE id=?",
