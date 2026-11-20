@@ -7,6 +7,7 @@
   <title>AVARA — Your personal intelligence</title>
   <style>
     :root{color-scheme:dark;--bg:#070b12;--panel:#0c1421;--line:#1b3447;--cyan:#54eaff;--blue:#7388ff;--text:#edf5ff;--muted:#9aacc2}*{box-sizing:border-box}body{margin:0;background:radial-gradient(ellipse at 70% 0%,#10283a 0,transparent 38%),var(--bg);color:var(--text);font:16px/1.55 Inter,Segoe UI,Arial,sans-serif}a{color:var(--cyan)}.wrap{max-width:1120px;padding:24px;margin:auto}.nav{display:flex;align-items:center;justify-content:space-between;border-bottom:1px solid var(--line);padding:10px 0 22px}.brand{display:flex;align-items:center;gap:12px;font-weight:800;letter-spacing:.22em}.mark{font-size:27px;color:var(--cyan);border:1px solid #23728a;border-radius:14px;padding:2px 12px}.nav a{text-decoration:none;color:var(--muted)}.hero{padding:90px 0 56px;max-width:780px}.eyebrow{color:var(--cyan);font:700 12px monospace;letter-spacing:.25em}.hero h1{font-size:clamp(42px,7vw,78px);line-height:1.03;margin:18px 0}.hero p{font-size:19px;color:var(--muted);max-width:650px}.btn{display:inline-block;border:0;border-radius:12px;padding:14px 20px;background:linear-gradient(110deg,#17b9d1,#7283ff);color:white;font-weight:750;text-decoration:none;cursor:pointer}.section-title{margin:28px 0}.plans,.products{display:grid;grid-template-columns:repeat(2,minmax(0,1fr));gap:18px}.card{background:linear-gradient(145deg,#101d2c,#0a111c);border:1px solid var(--line);border-radius:20px;padding:26px}.card.featured{border-color:#31cce0;box-shadow:0 0 36px #1bcce015}.price{font-size:42px;font-weight:800;margin:15px 0}.price small{font-size:15px;color:var(--muted);font-weight:500}.card ul{padding-left:20px;color:#c5d4e5}.card li{margin:8px 0}.formbox{margin:44px 0;background:#09111d;border:1px solid var(--line);border-radius:20px;padding:28px}.formgrid{display:grid;grid-template-columns:1fr 1fr;gap:14px}label{display:block;color:#c9d9e9;font-size:14px}input,select{width:100%;margin-top:7px;border:1px solid #27455d;border-radius:10px;background:#070d16;color:var(--text);padding:13px;font:inherit}input[type=checkbox]{width:auto;accent-color:var(--cyan)}.terms{margin:20px 0;color:var(--muted)}.notice{display:none;margin-top:18px;padding:14px;border:1px solid #b77b32;border-radius:10px;background:#261b0c;color:#ffe1a6}.fine{font-size:13px;color:var(--muted)}footer{border-top:1px solid var(--line);padding:24px 0;color:var(--muted)}@media(max-width:680px){.wrap{padding:18px}.hero{padding:60px 0 36px}.plans,.products,.formgrid{grid-template-columns:1fr}.card{padding:22px}}
+    [hidden]{display:none!important}.auth-tabs{display:flex;gap:8px;margin:18px 0}.auth-tabs [aria-pressed="false"]{background:#152339}.formbox form > button{margin-top:16px}button:disabled{opacity:.65;cursor:wait}
   </style>
 </head>
 <body>
@@ -18,21 +19,139 @@
     <article class="card featured"><div class="eyebrow">AVARA PRO · COMPLETE</div><div class="price">₹599 <small>/ month</small></div><p class="fine">The complete AVARA experience.</p><ul><li>Everything in Basic</li><li>Website and presentation creation</li><li>Google Workspace connections when configured</li><li>Higher AI and voice usage allowance</li><li>Cloud backup and priority support</li></ul><button class="btn choose" data-plan="Pro">Choose Pro</button></article>
   </div></section>
   <section class="formbox" id="order"><div class="eyebrow">START YOUR ORDER</div><h2>Make AVARA yours</h2><p class="fine">Choose a plan, create your account once, then sign in whenever you return.</p>
-    <div style="display:flex;gap:8px;margin:18px 0"><button class="btn" type="button" id="signup-tab">Sign up</button><button class="btn" type="button" id="login-tab" style="opacity:.65">Sign in</button></div>
-    <form id="order-form"><div class="formgrid"><label>Plan<select id="plan" required><option value="">Select a plan</option><option>Basic — ₹299/month</option><option>Pro — ₹599/month</option></select></label><label>Optional add-on<select id="addon"><option>None</option><option>Setup assistance — discuss availability</option></select></label><label id="name-field">Your name<input id="name" autocomplete="name" required maxlength="100"></label><label>Email for sign-in and order updates<input id="email" type="email" autocomplete="email" required maxlength="254"></label><label>Password<input id="password" type="password" autocomplete="new-password" required minlength="12" maxlength="128" placeholder="At least 12 characters"></label><label id="confirm-field">Confirm password<input id="confirm" type="password" autocomplete="new-password" required minlength="12" maxlength="128"></label></div>
+    <div id="account-panel">
+      <div class="auth-tabs" role="group" aria-label="Account mode">
+        <button class="btn" type="button" id="login-tab" aria-pressed="true">Sign in</button>
+        <button class="btn" type="button" id="signup-tab" aria-pressed="false">Sign up</button>
+      </div>
+      <form id="account-form">
+        <div class="formgrid">
+          <label id="name-field" hidden>Your name<input id="name" autocomplete="name" maxlength="100"></label>
+          <label>Email<input id="email" type="email" autocomplete="username" required maxlength="254"></label>
+          <label>Password<input id="password" type="password" autocomplete="current-password" required minlength="12" maxlength="128"></label>
+          <label id="confirm-field" hidden>Confirm password<input id="confirm" type="password" autocomplete="new-password" minlength="12" maxlength="128"></label>
+        </div>
+        <button class="btn" id="auth-submit" type="submit">Sign in</button>
+      </form>
+    </div>
+    <p id="signed-in" hidden></p>
+    <form id="order-form" hidden><div class="formgrid"><label>Plan<select id="plan" required><option value="">Select a plan</option><option>Basic — ₹299/month</option><option>Pro — ₹599/month</option></select></label><label>Optional add-on<select id="addon"><option>None</option><option>Setup assistance — discuss availability</option></select></label></div>
       <label class="terms"><input id="accept" type="checkbox" required> I accept the <a href="terms.html" target="_blank" rel="noopener">Terms and Conditions</a> and <a href="privacy.html" target="_blank" rel="noopener">Privacy Notice</a>.</label>
-      <p class="fine">Payment method: cash. Payment and delivery arrangements are confirmed separately.</p><button class="btn" type="button" id="register">Create account</button> <button class="btn" type="button" id="signin" hidden>Sign in</button> <button class="btn" type="submit">Request cash order</button><div class="notice" id="notice" role="status"></div>
+      <p class="fine">Payment method: cash. Payment and delivery arrangements are confirmed separately.</p>
+      <button class="btn" id="order-submit" type="submit">Request cash order</button>
     </form>
+    <div class="notice" id="notice" role="status"></div>
   </section>
   <footer><div>© AVARA · <a href="terms.html">Terms</a> · <a href="privacy.html">Privacy</a></div><p class="fine">Orders and subscriptions become active only after secure account and payment services are connected.</p></footer>
 </div>
 <script>
 document.querySelectorAll('.choose').forEach(b=>b.addEventListener('click',()=>{document.querySelector('#plan').value=b.dataset.plan+' — ₹'+(b.dataset.plan==='Basic'?'299':'599')+'/month';document.querySelector('#bag-link').textContent='Bag (1)';document.querySelector('#order').scrollIntoView({behavior:'smooth'});}));
-const field=id=>document.getElementById(id);async function call(path,body){const n=field('notice');n.style.display='block';if(location.protocol==='file:'){n.textContent='Open the storefront through its server to use accounts and orders.';return;}try{const r=await fetch(path,{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify(body)});const d=await r.json();n.textContent=d.message||d.detail||'Request failed.';}catch(e){n.textContent='Unable to reach the order service. Please try again.';}}
-function account(){return {name:field('name').value,email:field('email').value,password:field('password').value};}
-function authMode(mode){const signup=mode==='signup';field('name-field').hidden=!signup;field('confirm-field').hidden=!signup;field('name').required=signup;field('confirm').required=signup;field('register').hidden=!signup;field('signin').hidden=signup;field('signup-tab').style.opacity=signup?'1':'.65';field('login-tab').style.opacity=signup?'.65':'1';}
-field('signup-tab').onclick=()=>authMode('signup');field('login-tab').onclick=()=>authMode('login');
-field('register').onclick=()=>{if(field('password').value!==field('confirm').value){field('notice').style.display='block';field('notice').textContent='Passwords do not match.';return;}call('/api/account',account());};field('signin').onclick=()=>call('/api/login',account());authMode('signup');
-field('order-form').addEventListener('submit',e=>{e.preventDefault();call('/api/order',{plan:field('plan').value,addon:field('addon').value,accepted:field('accept').checked});});
+const field = id => document.getElementById(id);
+let signup = false;
+function notice(message) {
+  field('notice').style.display = message ? 'block' : 'none';
+  field('notice').textContent = message;
+}
+async function api(path, body) {
+  if (location.protocol === 'file:') throw new Error('Open the hosted storefront to use accounts and orders.');
+  const options = {cache: 'no-store', signal: AbortSignal.timeout(15000)};
+  if (body) Object.assign(options, {method: 'POST', headers: {'Content-Type': 'application/json'}, body: JSON.stringify(body)});
+  const response = await fetch(path, options);
+  const data = await response.json().catch(() => ({}));
+  if (!response.ok) {
+    const error = new Error(typeof data.detail === 'string' ? data.detail : 'Request failed. Check your entries and try again.');
+    error.status = response.status;
+    throw error;
+  }
+  return data;
+}
+function authMode(createAccount) {
+  signup = createAccount;
+  for (const id of ['name', 'confirm']) {
+    field(id + '-field').hidden = !signup;
+    field(id).required = signup;
+  }
+  field('password').autocomplete = signup ? 'new-password' : 'current-password';
+  field('signup-tab').setAttribute('aria-pressed', String(signup));
+  field('login-tab').setAttribute('aria-pressed', String(!signup));
+  field('auth-submit').textContent = signup ? 'Create account' : 'Sign in';
+}
+function showSession(name) {
+  field('account-panel').hidden = Boolean(name);
+  field('order-form').hidden = !name;
+  field('signed-in').hidden = !name;
+  field('signed-in').textContent = name ? 'Signed in as ' + name : '';
+  field('password').value = '';
+  field('confirm').value = '';
+}
+field('signup-tab').onclick = () => { authMode(true); notice(''); };
+field('login-tab').onclick = () => { authMode(false); notice(''); };
+field('account-form').onsubmit = async event => {
+  event.preventDefault();
+  const button = field('auth-submit');
+  if (button.disabled) return;
+  const data = {email: field('email').value, password: field('password').value};
+  const creating = signup;
+  if (creating) {
+    if (data.password !== field('confirm').value) return notice('Passwords do not match.');
+    data.name = field('name').value;
+  }
+  button.disabled = field('signup-tab').disabled = field('login-tab').disabled = true;
+  notice(creating ? 'Creating account…' : 'Signing in…');
+  try {
+    const result = await api(creating ? '/api/account' : '/api/login', data);
+    if (creating) authMode(false);
+    showSession(result.name);
+    notice(creating ? result.message : '');
+  } catch (error) {
+    if (creating && error.status === 409) authMode(false);
+    notice(error.message);
+  } finally {
+    button.disabled = field('signup-tab').disabled = field('login-tab').disabled = false;
+  }
+};
+async function reportOrder(result) {
+  const messages = {
+    pending: 'Checking the owner email notification…',
+    accepted: 'The email provider accepted the owner notification.',
+    failed: 'The email provider rejected the notification.',
+    disabled: 'The owner email notification is unavailable.',
+    unconfirmed: 'The owner email notification could not be confirmed.',
+  };
+  let status = result.notification;
+  notice([result.message, messages[status]].filter(Boolean).join(' '));
+  const deadline = Date.now() + 20000;
+  while (status === 'pending' && Date.now() < deadline) {
+    await new Promise(resolve => setTimeout(resolve, 1200));
+    try {
+      status = (await api('/api/order/' + result.order_id + '/notification')).status;
+    } catch {
+      status = 'unconfirmed';
+    }
+  }
+  if (status) notice(result.message + ' ' + (status === 'pending' ? messages.unconfirmed : messages[status]));
+}
+field('order-form').onsubmit = async event => {
+  event.preventDefault();
+  const button = field('order-submit');
+  if (button.disabled) return;
+  button.disabled = true;
+  notice('Saving your cash order…');
+  try {
+    const result = await api('/api/order', {plan: field('plan').value, addon: field('addon').value, accepted: field('accept').checked});
+    field('accept').checked = false;
+    await reportOrder(result);
+  } catch (error) {
+    if (error.status === 401) showSession(null);
+    notice(error.status ? error.message : 'Could not confirm the order. Check with AVARA before submitting again.');
+  } finally {
+    button.disabled = false;
+  }
+};
+if (location.protocol !== 'file:') {
+  api('/api/session').then(result => {
+    if (!field('auth-submit').disabled) showSession(result.name);
+  }).catch(() => {});
+}
 </script>
 </body></html>
