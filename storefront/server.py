@@ -84,7 +84,7 @@ def page(page: str):
     return FileResponse(ROOT / (page + '.html'))
 
 @app.post('/api/account')
-def account(data: Account):
+def account(data: Account, background_tasks: BackgroundTasks):
     email = data.email.strip().lower()
     name = data.name.strip()
     if not name or email.count('@') != 1 or any(c in email for c in '\r\n '):
@@ -99,8 +99,9 @@ def account(data: Account):
     return {'message':'Account created. Please sign in.'}
 
 @app.post('/api/login')
-def login(data: Credentials):
+def login(data: Credentials, background_tasks: BackgroundTasks):
     with db() as con:
+    background_tasks.add_task(_sync_supabase_account, email, name)
         row = con.execute('SELECT id,salt,password,name FROM users WHERE email=?', (data.email.strip().lower(),)).fetchone()
         salt = row[1] if row else bytes(16)
         value = hashlib.scrypt(data.password.encode(), salt=salt, n=16384, r=8, p=1)
@@ -116,8 +117,36 @@ def login(data: Credentials):
 def _send_order_email(order_id, name, email, plan, addon, transport):
     msg = EmailMessage()
     msg['To'] = 'kasula.ashwath3180076@gmail.com'
+    background_tasks.add_task(_sync_supabase_account, data.email.strip().lower(), row[3])
     msg['Subject'] = f'AVARA cash order #{order_id}'
     msg.set_content(f'Order #{order_id}\nCustomer: {name}\nEmail: {email}\nPlan: {plan}\nAdd-on: {addon}\nPayment: cash\nTerms: draft-1 accepted')
+def _sync_supabase_account(email: str, display_name: str):
+    url = os.getenv('SUPABASE_URL', '').strip().rstrip('/')
+    key = os.getenv('SUPABASE_SERVICE_ROLE_KEY', '').strip()
+    if not url or not key:
+        return
+
+    headers = {
+        'apikey': key,
+        'Content-Type': 'application/json',
+        'Prefer': 'resolution=merge-duplicates,return=minimal',
+    }
+    if not key.startswith('sb_secret_'):
+        headers['Authorization'] = 'Bearer ' + key
+    try:
+        request = urllib.request.Request(
+            url + '/rest/v1/storefront_accounts',
+            data=json.dumps({'email': email, 'display_name': display_name}).encode(),
+            headers=headers,
+            method='POST',
+        )
+        with urllib.request.urlopen(request, timeout=8):
+            pass
+    except HTTPError as exc:
+        logger.warning('Supabase storefront account sync returned HTTP %s', exc.code)
+    except (OSError, ValueError) as exc:
+        logger.warning('Supabase storefront account sync failed (%s)', type(exc).__name__)
+
     if transport == 'resend':
         payload = {'from': os.getenv('AVARA_STORE_EMAIL_FROM', 'AVARA Orders <onboarding@resend.dev>'),
                    'to': [str(msg['To'])], 'subject': str(msg['Subject']), 'text': msg.get_content()}
