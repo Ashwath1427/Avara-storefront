@@ -24,13 +24,30 @@ DB_PATH = os.environ.get('AVARA_STORE_DB', str(ROOT / 'store.db'))
 app = FastAPI(docs_url=None, redoc_url=None, openapi_url=None)
 logger = logging.getLogger('uvicorn.error')
 
+
+class StoreConnection(sqlite3.Connection):
+    """Commit or roll back a with-block, then release the SQLite file handle."""
+    def __exit__(self, exc_type, exc_value, traceback):
+        try:
+            return super().__exit__(exc_type, exc_value, traceback)
+        finally:
+            self.close()
+
+
 def db():
-    con = sqlite3.connect(DB_PATH, timeout=10)
+    con = sqlite3.connect(DB_PATH, timeout=10, factory=StoreConnection)
     con.execute('PRAGMA foreign_keys=ON')
     con.executescript('''CREATE TABLE IF NOT EXISTS users (id INTEGER PRIMARY KEY, name TEXT NOT NULL, email TEXT NOT NULL UNIQUE, salt BLOB NOT NULL, password BLOB NOT NULL);
       CREATE TABLE IF NOT EXISTS sessions (token_hash TEXT PRIMARY KEY, user_id INTEGER NOT NULL REFERENCES users(id), expires INTEGER NOT NULL);
       CREATE TABLE IF NOT EXISTS orders (id INTEGER PRIMARY KEY, user_id INTEGER NOT NULL REFERENCES users(id), plan TEXT NOT NULL, addon TEXT NOT NULL, terms_version TEXT NOT NULL, created INTEGER NOT NULL);
       CREATE TABLE IF NOT EXISTS order_email (order_id INTEGER PRIMARY KEY REFERENCES orders(id), status TEXT NOT NULL, created INTEGER NOT NULL);''')
+    columns = {row[1] for row in con.execute('PRAGMA table_info(orders)')}
+    if 'status' not in columns:
+        con.execute("ALTER TABLE orders ADD COLUMN status TEXT NOT NULL DEFAULT 'pending'")
+    if 'approved_at' not in columns:
+        con.execute('ALTER TABLE orders ADD COLUMN approved_at INTEGER')
+    if 'delivery_email_status' not in columns:
+        con.execute("ALTER TABLE orders ADD COLUMN delivery_email_status TEXT NOT NULL DEFAULT 'not_sent'")
     return con
 
 class Credentials(BaseModel):
@@ -53,10 +70,73 @@ def session(request: Request):
         raise HTTPException(401, 'Please sign in first.')
     return row
 
+
+def owner_session(request: Request):
+    expected = os.getenv('AVARA_STORE_ADMIN_KEY', '').strip()
+    if len(expected) < 24:
+        raise HTTPException(503, 'Owner approval is not configured.')
+    authorization = request.headers.get('Authorization', '')
+    supplied = authorization[7:] if authorization.startswith('Bearer ') else ''
+    if not supplied or not hmac.compare_digest(supplied, expected):
+        raise HTTPException(401, 'Owner key is incorrect.')
+
+
+def plan_slug(plan: str):
+    if plan.startswith('Basic'):
+        return 'basic'
+    if plan.startswith('Pro'):
+        return 'pro'
+    raise HTTPException(400, 'This order has an unknown plan.')
+
+
+def plan_bundle(plan: str):
+    slug = plan_slug(plan)
+    configured = os.getenv(f'AVARA_{slug.upper()}_ZIP', '').strip()
+    return Path(configured) if configured else ROOT / 'deliverables' / f'avara-{slug}.zip'
+
+
+def email_transport():
+    if os.getenv('RESEND_API_KEY', '').strip():
+        return 'resend'
+    if os.getenv('RENDER') != 'true' and os.getenv('AVARA_STORE_SMTP_USER') and os.getenv('AVARA_STORE_SMTP_PASSWORD'):
+        return 'smtp'
+    return None
+
 @app.get('/api/session')
 def current_session(request: Request):
     _, name, _ = session(request)
     return {'name': name}
+
+
+@app.get('/api/orders')
+def customer_orders(request: Request):
+    user_id, _, _ = session(request)
+    with db() as con:
+        rows = con.execute(
+            'SELECT id,plan,addon,created,status,approved_at,delivery_email_status FROM orders WHERE user_id=? ORDER BY id DESC',
+            (user_id,),
+        ).fetchall()
+    return {'orders': [
+        {'id': row[0], 'plan': row[1], 'addon': row[2], 'created': row[3], 'status': row[4],
+         'approved_at': row[5], 'delivery_email_status': row[6],
+         'download_ready': row[4] == 'approved' and plan_bundle(row[1]).is_file()}
+        for row in rows
+    ]}
+
+
+@app.get('/api/order/{order_id}/download')
+def download_order(order_id: int, request: Request):
+    user_id, _, _ = session(request)
+    with db() as con:
+        row = con.execute('SELECT plan,status FROM orders WHERE id=? AND user_id=?', (order_id, user_id)).fetchone()
+    if not row:
+        raise HTTPException(404, 'Order not found.')
+    if row[1] != 'approved':
+        raise HTTPException(403, 'This order is not ready for download yet.')
+    bundle = plan_bundle(row[0])
+    if not bundle.is_file():
+        raise HTTPException(503, 'The release file is temporarily unavailable. Contact AVARA support.')
+    return FileResponse(bundle, filename=bundle.name, media_type='application/zip', headers={'Cache-Control': 'no-store'})
 
 @app.get('/api/order/{order_id}/notification')
 def order_notification(order_id: int, request: Request):
@@ -77,9 +157,24 @@ def order_notification(order_id: int, request: Request):
 def home():
     return FileResponse(ROOT / 'index.html', headers={'Cache-Control':'no-store'})
 
+
+@app.get('/owner')
+def owner_page():
+    return FileResponse(ROOT / 'owner.html', headers={'Cache-Control': 'no-store'})
+
+
+@app.get('/AVARA_SETUP_GUIDE.md')
+def setup_guide_file():
+    return FileResponse(ROOT / 'AVARA_SETUP_GUIDE.md', filename='AVARA_SETUP_GUIDE.md', media_type='text/markdown')
+
+
+@app.get('/reward.js')
+def reward_script():
+    return FileResponse(ROOT / 'reward.js', media_type='text/javascript', headers={'Cache-Control': 'no-store'})
+
 @app.get('/{page}.html')
 def page(page: str):
-    if page not in ('terms', 'privacy'):
+    if page not in ('terms', 'privacy', 'setup'):
         raise HTTPException(404)
     return FileResponse(ROOT / (page + '.html'))
 
@@ -180,6 +275,53 @@ def _deliver_order_email(order_id, name, email, plan, addon, transport):
     with db() as con:
         con.execute('UPDATE order_email SET status=? WHERE order_id=?', (status, order_id))
 
+
+def _send_ready_email(order_id, name, email, plan, public_url, transport):
+    msg = EmailMessage()
+    msg['To'] = email
+    msg['Subject'] = f'Your AVARA order #{order_id} is ready'
+    msg.set_content(
+        f'Hello {name},\n\nYour {plan} order has been approved and is ready.\n\n'
+        f'1. Open {public_url}/#order and sign in with the account used for this order.\n'
+        f'2. Open Your orders and choose Download AVARA.\n'
+        f'3. Read the setup guide before starting: {public_url}/setup.html\n\n'
+        'You will need either Ollama installed locally or compatible AI-provider API keys for AI features. '
+        'Some integrations require their own accounts and credentials. Never share your account password or API keys.\n\n'
+        'AVARA Support'
+    )
+    if transport == 'resend':
+        payload = {
+            'from': os.getenv('AVARA_STORE_EMAIL_FROM', 'AVARA Orders <onboarding@resend.dev>'),
+            'to': [email], 'subject': str(msg['Subject']), 'text': msg.get_content(),
+        }
+        req = urllib.request.Request('https://api.resend.com/emails', data=json.dumps(payload).encode(), headers={
+            'Authorization': 'Bearer ' + os.environ['RESEND_API_KEY'].strip(),
+            'Content-Type': 'application/json', 'User-Agent': 'AVARA-Storefront/1.0',
+        }, method='POST')
+        with urllib.request.urlopen(req, timeout=8) as response:
+            if not json.load(response).get('id'):
+                raise ValueError('Missing email provider message ID')
+        return
+    msg['From'] = os.environ['AVARA_STORE_SMTP_USER'].strip()
+    with smtplib.SMTP('smtp.gmail.com', 587, timeout=8) as smtp:
+        smtp.starttls(context=ssl.create_default_context())
+        smtp.login(str(msg['From']), ''.join(os.environ['AVARA_STORE_SMTP_PASSWORD'].split()))
+        smtp.send_message(msg)
+
+
+def _deliver_ready_email(order_id, name, email, plan, public_url, transport):
+    status = 'unconfirmed'
+    try:
+        _send_ready_email(order_id, name, email, plan, public_url, transport)
+        status = 'accepted'
+    except HTTPError as exc:
+        status = 'failed' if 400 <= exc.code < 500 else 'unconfirmed'
+        logger.warning('Order %s delivery email provider HTTP %s', order_id, exc.code)
+    except (OSError, ValueError) as exc:
+        logger.warning('Order %s delivery email unconfirmed (%s)', order_id, type(exc).__name__)
+    with db() as con:
+        con.execute('UPDATE orders SET delivery_email_status=? WHERE id=?', (status, order_id))
+
 def _save_supabase_order(order_id: int, user_id: int, name: str, email: str, plan: str, addon: str):
     url = os.environ.get('SUPABASE_URL', '').rstrip('/')
     key = os.environ.get('SUPABASE_SERVICE_ROLE_KEY', '')
@@ -195,19 +337,82 @@ def _save_supabase_order(order_id: int, user_id: int, name: str, email: str, pla
     except (OSError, ValueError) as exc:
         logger.warning('Order %s Supabase backup failed (%s)', order_id, type(exc).__name__)
 
+
+def _update_supabase_order_status(order_id: int, status: str, approved_at: int):
+    url = os.environ.get('SUPABASE_URL', '').rstrip('/')
+    key = os.environ.get('SUPABASE_SERVICE_ROLE_KEY', '')
+    if not url or not key:
+        return
+    payload = json.dumps({'status': status, 'approved_at': approved_at}).encode()
+    req = urllib.request.Request(
+        url + f'/rest/v1/orders?local_order_id=eq.{order_id}', data=payload, method='PATCH',
+        headers={'apikey': key, 'Authorization': 'Bearer ' + key, 'Content-Type': 'application/json', 'Prefer': 'return=minimal'},
+    )
+    try:
+        with urllib.request.urlopen(req, timeout=8):
+            pass
+    except HTTPError as exc:
+        logger.warning('Order %s Supabase approval sync HTTP %s', order_id, exc.code)
+    except (OSError, ValueError) as exc:
+        logger.warning('Order %s Supabase approval sync failed (%s)', order_id, type(exc).__name__)
+
+
+@app.get('/api/admin/orders')
+def admin_orders(request: Request):
+    owner_session(request)
+    with db() as con:
+        rows = con.execute(
+            '''SELECT orders.id,users.name,users.email,orders.plan,orders.addon,orders.created,
+                      orders.status,orders.approved_at,orders.delivery_email_status
+               FROM orders JOIN users ON users.id=orders.user_id ORDER BY orders.id DESC'''
+        ).fetchall()
+    return {'orders': [
+        {'id': row[0], 'name': row[1], 'email': row[2], 'plan': row[3], 'addon': row[4],
+         'created': row[5], 'status': row[6], 'approved_at': row[7], 'delivery_email_status': row[8],
+         'bundle_ready': plan_bundle(row[3]).is_file()}
+        for row in rows
+    ]}
+
+
+@app.post('/api/admin/order/{order_id}/approve')
+def approve_order(order_id: int, request: Request, background_tasks: BackgroundTasks):
+    owner_session(request)
+    transport = email_transport()
+    if not transport:
+        raise HTTPException(503, 'Customer email delivery is not configured.')
+    with db() as con:
+        row = con.execute(
+            'SELECT orders.plan,orders.status,users.name,users.email FROM orders JOIN users ON users.id=orders.user_id WHERE orders.id=?',
+            (order_id,),
+        ).fetchone()
+        if not row:
+            raise HTTPException(404, 'Order not found.')
+        plan, status, name, email = row
+        if status == 'approved':
+            return {'message': f'Order #{order_id} is already approved.', 'status': status}
+        bundle = plan_bundle(plan)
+        if not bundle.is_file():
+            raise HTTPException(409, f'Upload {bundle.name} before approving this order.')
+        approved_at = int(time.time())
+        con.execute(
+            "UPDATE orders SET status='approved',approved_at=?,delivery_email_status='pending' WHERE id=?",
+            (approved_at, order_id),
+        )
+    public_url = os.getenv('AVARA_STORE_PUBLIC_URL', '').strip().rstrip('/') or str(request.base_url).rstrip('/')
+    background_tasks.add_task(_deliver_ready_email, order_id, name, email, plan, public_url, transport)
+    background_tasks.add_task(_update_supabase_order_status, order_id, 'approved', approved_at)
+    return {'message': f'Order #{order_id} approved. The customer email is being sent.', 'status': 'approved'}
+
 @app.post('/api/order')
 def order(data: Order, request: Request, background_tasks: BackgroundTasks):
     user_id, name, email = session(request)
-    if not data.accepted or data.plan not in ('Basic — ₹299/month','Pro — ₹599/month') or data.addon not in ('None','Setup assistance — discuss availability'):
+    if not data.accepted or data.plan not in ('Basic — ₹150/month','Pro — ₹200/month') or data.addon not in ('None','Setup assistance — discuss availability'):
         raise HTTPException(400, 'Select a valid plan and accept the terms.')
     on_render = os.getenv('RENDER') == 'true'
     test_mode = not on_render and os.getenv('AVARA_STORE_TEST_MODE') == '1' and request.client and request.client.host in ('127.0.0.1', '::1')
     transport = None
     if not test_mode:
-        if os.getenv('RESEND_API_KEY', '').strip():
-            transport = 'resend'
-        elif not on_render and os.getenv('AVARA_STORE_SMTP_USER') and os.getenv('AVARA_STORE_SMTP_PASSWORD'):
-            transport = 'smtp'
+        transport = email_transport()
     status = 'pending' if transport else 'disabled'
     with db() as con:
         cur = con.execute('INSERT INTO orders(user_id,plan,addon,terms_version,created) VALUES(?,?,?,?,?)', (user_id,data.plan,data.addon,'draft-1',int(time.time())))
@@ -221,3 +426,102 @@ def order(data: Order, request: Request, background_tasks: BackgroundTasks):
     else:
         logger.warning('Order %s saved without a configured email sender', order_id)
     return {'message': f'Cash order #{order_id} saved.', 'order_id': order_id, 'notification': status}
+
+
+# Rewards live on the storefront server so refreshing or changing browsers cannot
+# reuse a winning PIN. Keep this database on persistent storage in production.
+@contextmanager
+def reward_db():
+    con = db()
+    con.executescript('''
+      CREATE TABLE IF NOT EXISTS reward_locks (
+        id TEXT PRIMARY KEY, pin_hash TEXT NOT NULL UNIQUE, clues TEXT NOT NULL,
+        consumed INTEGER NOT NULL DEFAULT 0);
+      CREATE TABLE IF NOT EXISTS reward_claims (
+        code TEXT PRIMARY KEY, user_id INTEGER NOT NULL UNIQUE REFERENCES users(id),
+        lock_id TEXT NOT NULL UNIQUE REFERENCES reward_locks(id), created INTEGER NOT NULL);
+      CREATE TABLE IF NOT EXISTS reward_attempts (
+        user_id INTEGER NOT NULL REFERENCES users(id), created INTEGER NOT NULL);
+    ''')
+    try:
+        with con:
+            yield con
+    finally:
+        con.close()
+
+
+def current_reward_lock(con):
+    import json
+    row = con.execute('SELECT id,clues FROM reward_locks WHERE consumed=0 LIMIT 1').fetchone()
+    if row:
+        return {'lock_id': row[0], 'clues': json.loads(row[1])}
+    # PIN hashes are unique across all rounds, including retired rounds.
+    for _ in range(100):
+        pin = ''.join(str(secrets.randbelow(10)) for _ in range(6))
+        digest = hashlib.sha256(pin.encode()).hexdigest()
+        if con.execute('SELECT 1 FROM reward_locks WHERE pin_hash=?', (digest,)).fetchone():
+            continue
+        lock_id = secrets.token_urlsafe(18)
+        clues = []
+        for digit in pin:
+            offset = secrets.randbelow(15) + 5
+            clues.append(f'{int(digit) + offset} minus {offset}')
+        con.execute('INSERT INTO reward_locks(id,pin_hash,clues) VALUES(?,?,?)', (lock_id, digest, json.dumps(clues)))
+        return {'lock_id': lock_id, 'clues': clues}
+    raise HTTPException(503, 'A new lock could not be prepared. Try again later.')
+
+
+def reward_receipt(row, email):
+    return {'claim': {'code': row[0], 'created': row[1], 'account_email': email,
+                      'plan': 'AVARA Basic', 'duration': '1 month',
+                      'status': 'Awaiting screenshot email and owner approval',
+                      'contact_email': os.environ.get('AVARA_REWARD_EMAIL', 'kasula.ashwath3180076@gmail.com')}}
+
+
+@app.get('/api/reward')
+def reward_status(request: Request):
+    user_id, _, email = session(request)
+    with reward_db() as con:
+        con.execute('BEGIN IMMEDIATE')
+        claim = con.execute('SELECT code,created FROM reward_claims WHERE user_id=?', (user_id,)).fetchone()
+        if claim:
+            return reward_receipt(claim, email)
+        return current_reward_lock(con)
+
+
+class RewardUnlock(BaseModel):
+    lock_id: str = Field(min_length=10, max_length=64)
+    pin: str = Field(pattern=r'^[0-9]{6}$', min_length=6, max_length=6)
+
+
+@app.post('/api/reward/unlock')
+def reward_unlock(data: RewardUnlock, request: Request):
+    user_id, _, email = session(request)
+    now = int(time.time())
+    # Commit failed attempts too, and serialize competing correct answers.
+    error = None
+    receipt = None
+    with reward_db() as con:
+        con.execute('BEGIN IMMEDIATE')
+        if con.execute('SELECT 1 FROM reward_claims WHERE user_id=?', (user_id,)).fetchone():
+            error = (409, 'You already have a reward. Reopen the lock to view your saved claim.')
+        else:
+            con.execute('DELETE FROM reward_attempts WHERE created<?', (now - 60,))
+            attempts = con.execute('SELECT COUNT(*) FROM reward_attempts WHERE user_id=?', (user_id,)).fetchone()[0]
+            if attempts >= 5:
+                error = (429, 'Too many guesses. Wait one minute before trying again.')
+            else:
+                con.execute('INSERT INTO reward_attempts VALUES(?,?)', (user_id, now))
+                lock = con.execute('SELECT pin_hash,consumed FROM reward_locks WHERE id=?', (data.lock_id,)).fetchone()
+                if not lock or lock[1]:
+                    error = (409, 'This lock has already been opened or is unavailable. Reopen for a fresh puzzle.')
+                elif not hmac.compare_digest(lock[0], hashlib.sha256(data.pin.encode()).hexdigest()):
+                    error = (400, 'Incorrect combination. Solve the six clues in order.')
+                else:
+                    code = 'AVARA-BASIC-' + secrets.token_hex(10).upper()
+                    con.execute('UPDATE reward_locks SET consumed=1 WHERE id=? AND consumed=0', (data.lock_id,))
+                    con.execute('INSERT INTO reward_claims VALUES(?,?,?,?)', (code, user_id, data.lock_id, now))
+                    receipt = reward_receipt((code, now), email)
+    if error:
+        raise HTTPException(*error)
+    return receipt
