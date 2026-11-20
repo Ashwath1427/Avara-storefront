@@ -105,11 +105,24 @@ def order(data: Order, request: Request):
     msg['Reply-To'] = email
     msg['Subject'] = f'AVARA cash order #{order_id}'
     msg.set_content(f'Order #{order_id}\nCustomer: {name}\nEmail: {email}\nPlan: {data.plan}\nAdd-on: {data.addon}\nPayment: cash\nTerms: draft-1 accepted')
-    try:
-        with smtplib.SMTP('smtp.gmail.com', 587, timeout=15) as smtp:
-            smtp.starttls(context=ssl.create_default_context())
-            smtp.login(smtp_user, smtp_password)
-            smtp.send_message(msg)
-    except (OSError, smtplib.SMTPException):
+    delivered = False
+    for mode in ('starttls', 'ssl'):
+        try:
+            if mode == 'ssl':
+                with smtplib.SMTP_SSL('smtp.gmail.com', 465, timeout=20, context=ssl.create_default_context()) as smtp:
+                    smtp.login(smtp_user, smtp_password)
+                    smtp.send_message(msg)
+            else:
+                with smtplib.SMTP('smtp.gmail.com', 587, timeout=20) as smtp:
+                    smtp.ehlo()
+                    smtp.starttls(context=ssl.create_default_context())
+                    smtp.ehlo()
+                    smtp.login(smtp_user, smtp_password)
+                    smtp.send_message(msg)
+            delivered = True
+            break
+        except (OSError, smtplib.SMTPException):
+            continue
+    if not delivered:
         return {'message':f'Order #{order_id} was saved, but email delivery failed. Contact the AVARA owner with this order number.'}
     return {'message':f'Cash order #{order_id} was saved and the notification was sent. The owner will contact you to arrange payment.'}
