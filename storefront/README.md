@@ -10,6 +10,8 @@ Back up the original SQLite database before changing the environment or redeploy
 
 On Render, the new release checks the Supabase connection and schema at startup. Set the variable and run the SQL before deploying. Local runs can still use SQLite.
 
+When the SQLite snapshot is unavailable, use [supabase-order-recovery.sql](supabase-order-recovery.sql) to prepare the owner-only recovery helper. Its commented queries show how to compare visible records in the old mirror with new orders. Verify each customer through your existing contact or receipt before linking an order to their new account ID. Check for duplicates first and use a unique receipt reference because the old order number could repeat. Recover only orders with a verified original request and terms acceptance. The helper creates a pending order, and you can approve it normally after confirming payment. Old account passwords and sessions require the original SQLite backup.
+
 1. Build the customer packages from the desktop project with `python package_customer_releases.py` and upload the two ZIPs to the private release bucket.
 2. Confirm cash payment and approve the order. The customer downloads and extracts the matching edition and runs `START_AVARA_WINDOWS.bat`.
 3. Ask for the code shown by AVARA and the order number. On the approved order in `/owner`, enter the code and select **Activate installation**. Each approved order and code can be used once. Check the order number and code before confirming.
