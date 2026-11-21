@@ -305,7 +305,24 @@ def change_subscription(order_id: int, data: SubscriptionChange, request: Reques
     return {'message': message}
 
 
+INSTALLER_VERSION = "1.0.1"
+INSTALLER_FILES = {
+    "windows": (f"AVARA-{INSTALLER_VERSION}-windows-setup.exe", "application/vnd.microsoft.portable-executable"),
+    "mac-arm64": (f"AVARA-{INSTALLER_VERSION}-mac-arm64.dmg", "application/x-apple-diskimage"),
+    "mac-x86_64": (f"AVARA-{INSTALLER_VERSION}-mac-x86_64.dmg", "application/x-apple-diskimage"),
+}
+
+
+def installer_downloads():
+    return os.getenv("AVARA_INSTALLER_DOWNLOADS") == "true"
+
+
 def plan_filename(plan: str, platform: str = 'windows'):
+    if installer_downloads():
+        key = "mac-arm64" if platform == "mac" else platform
+        if key not in INSTALLER_FILES:
+            raise HTTPException(400, "Choose Windows, Mac Apple Silicon, or Mac Intel.")
+        return INSTALLER_FILES[key][0]
     if platform not in ('windows', 'mac'):
         raise HTTPException(400, 'Choose Windows or Mac.')
     return f'avara-{plan_slug(plan)}{ "-mac" if platform == "mac" else ""}.zip'
@@ -315,7 +332,7 @@ def plan_bundle(plan: str, platform: str = 'windows'):
     slug = plan_slug(plan)
     plan_filename(plan, platform)
     suffix = '_MAC' if platform == 'mac' else ''
-    configured = os.getenv(f'AVARA_{slug.upper()}{suffix}_ZIP', '').strip()
+    configured = '' if installer_downloads() else os.getenv(f'AVARA_{slug.upper()}{suffix}_ZIP', '').strip()
     return Path(configured) if configured else ROOT / 'deliverables' / plan_filename(plan, platform)
 
 
@@ -328,7 +345,7 @@ def storage_request(plan: str, method='GET', platform: str = 'windows'):
     slug = plan_slug(plan)
     filename = plan_filename(plan, platform)
     suffix = '_MAC' if platform == 'mac' else ''
-    object_name = os.getenv(f'AVARA_{slug.upper()}{suffix}_STORAGE_OBJECT', filename).strip()
+    object_name = filename if installer_downloads() else os.getenv(f'AVARA_{slug.upper()}{suffix}_STORAGE_OBJECT', filename).strip()
     if not object_name:
         return None
     headers = {'apikey': key, 'Cache-Control': 'no-store'}
@@ -343,6 +360,8 @@ def storage_request(plan: str, method='GET', platform: str = 'windows'):
 
 
 def plan_bundle_ready(plan: str, platform: str = 'windows'):
+    if installer_downloads() and platform == "mac":
+        return all(plan_bundle_ready(plan, variant) for variant in ("mac-arm64", "mac-x86_64"))
     if plan_bundle(plan, platform).is_file():
         return True
     request = storage_request(plan, 'HEAD', platform)
@@ -379,13 +398,13 @@ def customer_orders(request: Request):
     return {'orders': [
         {'id': row[0], 'plan': row[1], 'addon': row[2], 'created': row[3], 'status': row[4],
          'approved_at': row[5], 'delivery_email_status': row[6],
-         'platform': row[7], 'download_ready': row[4] == 'approved' and plan_bundle_ready(row[1], row[7])}
+         'platform': row[7], 'installer_downloads': installer_downloads(), 'download_ready': row[4] == 'approved' and plan_bundle_ready(row[1], row[7])}
         for row in rows
     ]}
 
 
 @app.get('/api/order/{order_id}/download')
-def download_order(order_id: int, request: Request, platform: str | None = None):
+def download_order(order_id: int, request: Request, platform: str | None = None, architecture: str | None = None):
     user_id, _, _ = session(request)
     with db() as con:
         row = con.execute('SELECT plan,status,platform FROM orders WHERE id=? AND user_id=?', (order_id, user_id)).fetchone()
@@ -397,9 +416,16 @@ def download_order(order_id: int, request: Request, platform: str | None = None)
         raise HTTPException(403, 'This order is for a different operating system.')
     platform = row[2]
     plan = row[0]
+    media_type = "application/zip"
+    if installer_downloads():
+        if platform == "mac":
+            if architecture not in ("arm64", "x86_64"):
+                raise HTTPException(400, "Choose Mac Apple Silicon or Mac Intel.")
+            platform = "mac-" + architecture
+        media_type = INSTALLER_FILES[platform][1]
     bundle = plan_bundle(plan, platform)
     if bundle.is_file():
-        return FileResponse(bundle, filename=bundle.name, media_type='application/zip', headers={'Cache-Control': 'no-store'})
+        return FileResponse(bundle, filename=plan_filename(plan, platform), media_type=media_type, headers={'Cache-Control': 'no-store'})
     storage = storage_request(plan, platform=platform)
     if not storage:
         raise HTTPException(503, 'The release file is temporarily unavailable. Contact AVARA support.')
@@ -419,7 +445,7 @@ def download_order(order_id: int, request: Request, platform: str | None = None)
             upstream.close()
 
     return StreamingResponse(
-        stream_release(), media_type='application/zip',
+        stream_release(), media_type=media_type,
         headers={'Cache-Control': 'no-store', 'Content-Disposition': f'attachment; filename="{plan_filename(plan, platform)}"'},
     )
 

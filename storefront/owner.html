@@ -83,7 +83,7 @@ function renderOrder(order){
   else{
     const button=document.createElement('button');button.className='btn';button.type='button';button.textContent='Approve and email customer';button.disabled=!order.bundle_ready;
     button.onclick=()=>approve(order.id,button);action.append(button);
-    if(!order.bundle_ready){const missing=document.createElement('div');missing.className='missing';missing.textContent='Plan ZIP is missing';action.append(missing);}
+    if(!order.bundle_ready){const missing=document.createElement('div');missing.className='missing';missing.textContent='Release file is missing';action.append(missing);}
   }
   card.append(action);return card;
 }

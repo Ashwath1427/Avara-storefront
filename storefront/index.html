@@ -265,6 +265,27 @@ async function loadOrders() {
         download.className = 'btn';
         download.href = '/api/order/' + order.id + '/download';
         download.textContent = 'Download AVARA for ' + (order.platform === 'mac' ? 'Mac' : 'Windows');
+        if (order.installer_downloads && order.platform === 'mac') {
+          const label = document.createElement('label');
+          label.textContent = 'Your Mac';
+          const chip = document.createElement('select');
+          const choices = [['', 'Choose your Mac'], ['arm64', 'Apple Silicon (M1 or newer)'], ['x86_64', 'Intel']];
+          for (const [value, text] of choices) {
+            const option = document.createElement('option');
+            option.value = value; option.textContent = text; chip.append(option);
+          }
+          chip.onchange = () => {
+            download.href = '/api/order/' + order.id + '/download?architecture=' + encodeURIComponent(chip.value);
+          };
+          download.onclick = event => {
+            if (!chip.value) { event.preventDefault(); chip.focus(); }
+          };
+          const hint = document.createElement('p');
+          hint.className = 'fine';
+          hint.textContent = 'Not sure? Apple menu → About This Mac. Chip: Apple M… means Apple Silicon.';
+          label.append(chip);
+          card.append(label, hint);
+        }
         card.append(download);
       } else if (order.status === 'approved') {
         const unavailable = document.createElement('span');

@@ -43,3 +43,7 @@ Render uses the Resend HTTPS API for notifications. Add `RESEND_API_KEY` as a pr
 The old `public.orders` mirror is available in SQLite mode only. In PostgreSQL mode, view new orders under `avara_store.orders` or in the owner dashboard.
 
 Before public launch, finalize the terms and privacy notice, configure HTTPS and persistent backups, add account email verification, password recovery, rate limiting, monitoring, and review security. Cash payment is still verified manually. New sign-ins last up to 14 days. Keep SQLite for local development or mount it on persistent storage when using that mode.
+
+## Native installer delivery
+
+After the three customer installers are verified in the private release bucket, set AVARA_INSTALLER_DOWNLOADS=true in Render. The version and filenames are defined together in server.py. Both Basic and Pro orders use the matching operating-system installer. Mac customers select Apple Silicon or Intel on the approved order. Old Mac orders also receive this choice. Keep this switch unset until the files are available.
