@@ -29,6 +29,26 @@ SESSION_SECONDS = 14 * 86400
 logger = logging.getLogger('uvicorn.error')
 
 
+def database_failure_hint(exc):
+    """Return a safe connection-error category without exposing database secrets."""
+    message = str(exc).lower()
+    checks = (
+        (('password authentication failed', 'authentication failed'), 'credentials rejected'),
+        (('tenant or user not found', 'user not found'), 'pooler user or project rejected'),
+        (('certificate verify failed', 'certificate validation failed'), 'tls certificate rejected'),
+        (('could not translate host name', 'name or service not known', 'nodename nor servname'),
+         'database host not found'),
+        (('timeout expired', 'timed out', 'connection timeout'), 'database connection timed out'),
+        (('connection refused',), 'database connection refused'),
+        (('network is unreachable', 'no route to host'), 'database network unreachable'),
+        (('server closed the connection unexpectedly',), 'database closed the connection'),
+    )
+    for fragments, hint in checks:
+        if any(fragment in message for fragment in fragments):
+            return hint
+    return 'unclassified connection failure'
+
+
 def check_postgres_schema():
     with postgres_connection() as con:
         for table in ('users', 'sessions', 'orders', 'order_email', 'installations',
@@ -45,8 +65,9 @@ async def lifespan(_app):
             await asyncio.to_thread(check_postgres_schema)
         except Exception as exc:
             # Connection errors may include private database details.
+            hint = database_failure_hint(exc)
             raise RuntimeError(
-                f'Storefront database check failed ({type(exc).__name__}). '
+                f'Storefront database check failed ({type(exc).__name__}: {hint}). '
                 'Verify the connection and run supabase-persistence.sql.'
             ) from None
     yield
