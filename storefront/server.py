@@ -293,24 +293,30 @@ def change_subscription(order_id: int, data: SubscriptionChange, request: Reques
     return {'message': message}
 
 
-def plan_filename(plan: str):
-    return f'avara-{plan_slug(plan)}.zip'
+def plan_filename(plan: str, platform: str = 'windows'):
+    if platform not in ('windows', 'mac'):
+        raise HTTPException(400, 'Choose Windows or Mac.')
+    return f'avara-{plan_slug(plan)}{ "-mac" if platform == "mac" else ""}.zip'
 
 
-def plan_bundle(plan: str):
+def plan_bundle(plan: str, platform: str = 'windows'):
     slug = plan_slug(plan)
-    configured = os.getenv(f'AVARA_{slug.upper()}_ZIP', '').strip()
-    return Path(configured) if configured else ROOT / 'deliverables' / plan_filename(plan)
+    plan_filename(plan, platform)
+    suffix = '_MAC' if platform == 'mac' else ''
+    configured = os.getenv(f'AVARA_{slug.upper()}{suffix}_ZIP', '').strip()
+    return Path(configured) if configured else ROOT / 'deliverables' / plan_filename(plan, platform)
 
 
-def storage_request(plan: str, method='GET'):
+def storage_request(plan: str, method='GET', platform: str = 'windows'):
     url = os.getenv('SUPABASE_URL', '').strip().rstrip('/')
     key = os.getenv('SUPABASE_SERVICE_ROLE_KEY', '').strip()
     bucket = os.getenv('AVARA_RELEASE_BUCKET', 'avara-releases').strip()
     if not url or not key or not bucket:
         return None
     slug = plan_slug(plan)
-    object_name = os.getenv(f'AVARA_{slug.upper()}_STORAGE_OBJECT', plan_filename(plan)).strip()
+    filename = plan_filename(plan, platform)
+    suffix = '_MAC' if platform == 'mac' else ''
+    object_name = os.getenv(f'AVARA_{slug.upper()}{suffix}_STORAGE_OBJECT', filename).strip()
     if not object_name:
         return None
     headers = {'apikey': key, 'Cache-Control': 'no-store'}
@@ -324,10 +330,10 @@ def storage_request(plan: str, method='GET'):
     )
 
 
-def plan_bundle_ready(plan: str):
-    if plan_bundle(plan).is_file():
+def plan_bundle_ready(plan: str, platform: str = 'windows'):
+    if plan_bundle(plan, platform).is_file():
         return True
-    request = storage_request(plan, 'HEAD')
+    request = storage_request(plan, 'HEAD', platform)
     if not request:
         return False
     try:
@@ -361,13 +367,14 @@ def customer_orders(request: Request):
     return {'orders': [
         {'id': row[0], 'plan': row[1], 'addon': row[2], 'created': row[3], 'status': row[4],
          'approved_at': row[5], 'delivery_email_status': row[6],
-         'download_ready': row[4] == 'approved' and plan_bundle_ready(row[1])}
+         'download_ready': row[4] == 'approved' and plan_bundle_ready(row[1]),
+         'mac_download_ready': row[4] == 'approved' and plan_bundle_ready(row[1], 'mac')}
         for row in rows
     ]}
 
 
 @app.get('/api/order/{order_id}/download')
-def download_order(order_id: int, request: Request):
+def download_order(order_id: int, request: Request, platform: str = 'windows'):
     user_id, _, _ = session(request)
     with db() as con:
         row = con.execute('SELECT plan,status FROM orders WHERE id=? AND user_id=?', (order_id, user_id)).fetchone()
@@ -376,10 +383,10 @@ def download_order(order_id: int, request: Request):
     if row[1] != 'approved':
         raise HTTPException(403, 'This order is not ready for download yet.')
     plan = row[0]
-    bundle = plan_bundle(plan)
+    bundle = plan_bundle(plan, platform)
     if bundle.is_file():
         return FileResponse(bundle, filename=bundle.name, media_type='application/zip', headers={'Cache-Control': 'no-store'})
-    storage = storage_request(plan)
+    storage = storage_request(plan, platform=platform)
     if not storage:
         raise HTTPException(503, 'The release file is temporarily unavailable. Contact AVARA support.')
     try:
@@ -399,7 +406,7 @@ def download_order(order_id: int, request: Request):
 
     return StreamingResponse(
         stream_release(), media_type='application/zip',
-        headers={'Cache-Control': 'no-store', 'Content-Disposition': f'attachment; filename="{plan_filename(plan)}"'},
+        headers={'Cache-Control': 'no-store', 'Content-Disposition': f'attachment; filename="{plan_filename(plan, platform)}"'},
     )
 
 @app.get('/api/order/{order_id}/notification')

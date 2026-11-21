@@ -128,6 +128,23 @@ class DeliveryTests(unittest.TestCase):
             self.assertEqual(Path(response.path), self.bundle)
             self.assertEqual(response.media_type, 'application/zip')
 
+    def test_mac_download_is_separate_and_requires_approval_and_ownership(self):
+        mac_bundle = Path(self.temp.name) / 'avara-basic-mac.zip'
+        mac_bundle.write_bytes(b'PK\x05\x06' + bytes(18))
+        with patch.dict('os.environ', {'AVARA_BASIC_MAC_ZIP': str(mac_bundle)}):
+            with patch.object(server, 'session', lambda request: (1, 'Buyer', 'buyer@example.com')):
+                with self.assertRaises(HTTPException):
+                    server.download_order(1, self.customer_request(), platform='mac')
+                with server.db() as con:
+                    con.execute("UPDATE orders SET status='approved' WHERE id=1")
+                self.assertTrue(server.customer_orders(self.customer_request())['orders'][0]['mac_download_ready'])
+                self.assertEqual(Path(server.download_order(1, self.customer_request(), platform='mac').path), mac_bundle)
+                with self.assertRaises(HTTPException):
+                    server.download_order(1, self.customer_request(), platform='linux')
+            with patch.object(server, 'session', lambda request: (2, 'Other', 'other@example.com')):
+                with self.assertRaises(HTTPException):
+                    server.download_order(1, self.customer_request(), platform='mac')
+
     def test_ready_email_targets_customer_and_contains_signin_and_guide_links(self):
         captured = {}
 
