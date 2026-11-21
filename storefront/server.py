@@ -233,7 +233,7 @@ def check_installation(data: InstallationCheck, response: Response):
     with db() as con:
         activation_table(con)
         row = con.execute(
-            '''SELECT installations.plan, installations.expires, installations.state
+            '''SELECT installations.plan, installations.expires, installations.state, orders.plan
                FROM installations JOIN orders ON orders.id=installations.order_id
                WHERE installations.code=? AND orders.status='approved' ''', (code,),
         ).fetchone()
@@ -243,7 +243,8 @@ def check_installation(data: InstallationCheck, response: Response):
         return {'status': row[2], 'plan': row[0], 'expires': row[1]}
     if row[1] <= time.time():
         return {'status': 'expired'}
-    return {'status': 'active', 'plan': row[0], 'expires': row[1]}
+    return {'status': 'active', 'plan': row[0], 'expires': row[1],
+            'six_month': row[3].startswith(('6-Month Basic', '6-Month Pro', 'AVARA 6-Month Plus'))}
 
 
 @app.post('/api/admin/order/{order_id}/subscription')
