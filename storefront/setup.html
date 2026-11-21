@@ -11,21 +11,40 @@
     a { color:#a9ffdf; text-underline-offset:.22em }
     :focus-visible { outline:2px solid #a9ffdf; outline-offset:4px }
     .note { padding:1rem; border-radius:.75rem; border:1px solid #3f5854; background:#142321; color:#c6e5dd }
-  </style></head><body><main>
-<a href="/">Back to AVARA</a><h1>AVARA Setup Guide</h1><p>This guide explains what you need before running your approved AVARA download.</p>
-<div class="note"><strong>Before you begin:</strong> Install 64-bit Python and choose at least one AI option: a Groq API key, a Gemini API key, or a local model running in Ollama. You do not need all three. Internet is needed for first-time installation and activation.</div>
-<section><h2>Installing the AVARA app</h2>
-<p>If your approved download is a Windows installer (.exe), run it and follow the installation steps. For your trusted AVARA download, the Windows SmartScreen prompt offers More info, then Run anyway.</p>
-<p>If your approved download is a Mac disk image (.dmg), open it, drag AVARA into Applications, and open AVARA. If macOS asks you to approve this trusted app, use System Settings → Privacy &amp; Security → Open Anyway.</p>
-<p>On first launch, send the displayed one-time activation code and your order number to the owner. Keep AVARA open while your installation is activated.</p>
-<p>Connect a Groq or Gemini API key, or use a local model with Ollama, to enable AI responses.</p>
-<h2>Installing a source ZIP</h2><p>The instructions below apply when your approved download is a source ZIP.</p></section>
-<h2>1. Download your approved plan</h2><p>Sign in on the AVARA website using the same account used for your cash order. In <strong>Your orders</strong>, choose <strong>Download AVARA</strong>. The download is available only after approval.</p>
-<h2>2. Install Python</h2><p>Download the latest stable 64-bit Python for Windows from <a href="https://www.python.org/downloads/windows/" target="_blank" rel="noopener">python.org</a>. During installation, enable “Add Python to PATH” if offered. AVARA requires Python 3.11 or newer. If the newest release cannot install an AVARA dependency, try Python 3.11 or 3.12.</p>
-<h2>3. Choose one AI option</h2><ul><li><strong>Groq:</strong> Sign in to <a href="https://console.groq.com/keys" target="_blank" rel="noopener">Groq API Keys</a> and create a key.</li><li><strong>Gemini:</strong> Create a key in <a href="https://aistudio.google.com/app/apikey" target="_blank" rel="noopener">Google AI Studio</a>.</li><li><strong>Ollama:</strong> <a href="https://ollama.com/download" target="_blank" rel="noopener">Download Ollama</a>, install it, and download a compatible local model from the <a href="https://ollama.com/library" target="_blank" rel="noopener">model library</a>. Keep Ollama running and select the installed model in AVARA.</li></ul><p>Groq and Gemini require internet access. Provider usage limits or charges may apply separately from your AVARA plan. Local model performance depends on your computer.</p>
-<h2>4. Install and start AVARA</h2><p>Extract the entire downloaded ZIP into a folder you control. Open the extracted folder and double-click <strong>START_AVARA_WINDOWS.bat</strong>. The first start installs required packages, so keep the window open and stay connected to the internet. Read <strong>START_HERE.txt</strong> in the downloaded folder for release-specific instructions.</p>
-<h2>5. Activate and configure AI</h2><p>Send the AVARA owner the one-time code shown in the app and your order number. Keep AVARA open while it checks for approval. Once unlocked, use the welcome setup or <strong>Settings → AI &amp; voice</strong> to select Ollama, Groq, or Gemini. Paste a cloud API key there if you chose one, save the settings, and test the connection with a simple chat.</p>
-<h2>AVARA for Mac</h2><p>The Mac edition is in testing. Once it is available, approved orders will show a separate <strong>Download AVARA for Mac</strong> button. Some computer controls and integrations are Windows-specific and may not be available on macOS.</p>
-<h2>Keep credentials private</h2><p>Enter API keys only in AVARA's local setup or settings. Never email keys, paste them into the storefront, or include them in screenshots. Google Workspace and other integrations require their own authorization.</p>
-<h2>Troubleshooting</h2><p>If a download is missing after approval, refresh the order status and sign in again. If an AI feature is offline, confirm Ollama is running or that the relevant API key is valid. Contact AVARA support with your order number—never with your password or API keys.</p>
-<p><a href="/AVARA_SETUP_GUIDE.md">Download this guide as a file</a></p></main></body></html>
+  </style></head><body><main><a href="/">Back to AVARA</a><h1>AVARA setup guide</h1>
+<h2>Download and install</h2>
+<ul>
+<li>Sign in to the AVARA storefront with the account used for your order. Select Windows or Mac when ordering. Cash payment and approval are handled by the owner.</li>
+<li>After approval, open <strong>Your orders → Download AVARA</strong>. Mac users choose <strong>Apple Silicon</strong> or <strong>Intel</strong>. Use Apple menu → About This Mac to identify the chip.</li>
+<li>Windows receives <code>AVARA-1.0.1-windows-setup.exe</code>. Run the installer, then launch AVARA from its installed shortcut.</li>
+<li>Mac receives <code>AVARA-1.0.1-mac-arm64.dmg</code> or <code>AVARA-1.0.1-mac-x86_64.dmg</code>. Open it, drag AVARA to Applications, eject the disk image, and open the installed app.</li>
+<li>Send the one-time code shown in AVARA and your order number to the owner. Keep AVARA open and online while the owner activates that installation.</li>
+</ul>
+<p>The packaged app includes Python and its application dependencies. You do not need to install Python or Node.js separately for the EXE/DMG release. Ollama is a separate optional installation if you choose local AI. A Windows installer cannot run on macOS, and a Mac DMG cannot run on Windows.</p>
+<h2>Choose one AI option</h2>
+<ul>
+<li><strong>Groq:</strong> create a key at <a href="https://console.groq.com/keys" target="_blank" rel="noopener">Groq API Keys</a>.</li>
+<li><strong>Gemini:</strong> create a key at <a href="https://aistudio.google.com/app/apikey" target="_blank" rel="noopener">Google AI Studio</a>.</li>
+<li><strong>Local AI:</strong> install <a href="https://ollama.com/download" target="_blank" rel="noopener">Ollama</a>, download a compatible model from its <a href="https://ollama.com/library" target="_blank" rel="noopener">model library</a>, and keep Ollama running.</li>
+</ul>
+<p>Use the welcome setup or <strong>Settings → AI &amp; voice</strong> to choose your provider, save its key or model, and test a simple chat. You need only one AI option. Groq/Gemini require internet and have their own limits or charges. Local models need sufficient computer resources. Optional voice, image, video, Google, and other integrations have separate setup requirements.</p>
+<p>Enter API keys only in AVARA&#x27;s local setup/settings. Never send passwords, activation tokens, or API keys in public messages or screenshots.</p>
+<h2>Approval and subscriptions</h2>
+<p>Monthly Basic is ₹150 and monthly Pro is ₹200. Six-month Basic is ₹1,000 and six-month Pro is ₹1,400. Initial activation lasts 30 or 180 days according to the approved order. Both plans use the same platform installer; the approved order supplies the entitlement.</p>
+<p>The first activation and periodic license checks require internet. The owner can pause, continue, renew, cancel, or change the plan. Deleted orders cannot download or activate until restored. Keep your AVARA user-data folder; reinstalling or deleting it can lose the device token and local settings.</p>
+<h2>Source ZIPs only</h2>
+<p>Older source ZIPs require 64-bit Python 3.11 or newer. Use the <a href="https://www.python.org/downloads/windows/" target="_blank" rel="noopener">Windows</a> or <a href="https://www.python.org/downloads/macos/" target="_blank" rel="noopener">macOS</a> Python download page. Use a Python version supported by the release dependencies; the newest version is not automatically compatible with every package. On Windows enable Add Python to PATH. Extract the entire ZIP and follow START_HERE.txt or the supplied START_AVARA_WINDOWS.bat / START_AVARA_MAC.command launcher. These steps do not apply to packaged EXE/DMG downloads.</p>
+<h2>Mac permissions and testing</h2>
+<p>Screen understanding, microphone, camera, and app control may need the corresponding macOS permissions. Review each request yourself. Windows-specific automation is not guaranteed on macOS. Mac availability in the storefront does not mean every feature has been tested on both Mac architectures.</p>
+<h2>Troubleshooting and uninstall</h2>
+<ul>
+<li>Missing download: refresh orders and sign in to the ordering account again. An approved order is required.</li>
+<li>Mac chip error from an old link: reopen the download; the chip-choice page now provides both choices.</li>
+<li>Activation cannot connect: confirm internet access, wait for the hosting service to wake, retry, and contact support with the order number and a redacted log if it persists.</li>
+<li>AI offline: test your chosen provider, key, quota, or running Ollama model.</li>
+<li>Startup failure: read AVARA&#x27;s log under Local AppData/AVARA/logs on Windows or Library/Application Support/AVARA/logs on Mac. Share only a redacted error excerpt.</li>
+<li>Unrecognized publisher warnings: verify the file came from your approved AVARA order. Stop if the source is uncertain; do not disable system protection.</li>
+<li>Windows packaged install: use Settings → Apps → Installed apps and the AVARA uninstaller if provided by your release. Mac: quit AVARA and remove its app from Applications. Saved user data may remain.</li>
+<li>Older source ZIPs: use the included UNINSTALL_AVARA_WINDOWS.bat/UNINSTALL_AVARA.ps1 only for that installation. Do not remove shared Python, Node.js, or Ollama just to uninstall AVARA.</li>
+</ul>
+<p>Before relying on optional features, verify them in Settings/Diagnostics and perform a small real action. A successful app launch does not prove every connected service works.</p><p><a href="/AVARA_SETUP_GUIDE.md">Download this guide as a file</a></p></main></body></html>

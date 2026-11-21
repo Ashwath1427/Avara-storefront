@@ -1,10 +1,7 @@
-# Private AVARA release files
+# Private release working files
 
-Do not commit customer release ZIPs or the full AVARA source to the public storefront repository.
+Current native installer delivery uses the exact objects listed in ../installer-parts.json. The storage-parts folder holds the local upload copies; keep all 14 parts in the private bucket. Customers receive one EXE or DMG.
 
-The approval service expects these private files by default:
+installers-1.0.1 contains original customer installer artifacts. legacy-source-zips contains the four older source ZIP backups, no longer used in native mode. legacy-tools contains older tools. Do not upload owners access or full desktop source to the public storefront repository.
 
-- `avara-basic.zip`
-- `avara-pro.zip`
-
-On Free Render, upload them to a private Supabase Storage bucket named `avara-releases`. On paid Render, you can instead keep them on a private persistent disk and set `AVARA_BASIC_ZIP` and `AVARA_PRO_ZIP` to their absolute paths. The owner screen refuses approval when the matching ZIP is missing. Downloads require a signed-in customer account with an approved order for that plan.
+See ../README.md for deployment and storage details. These binary artifacts are private and must not be committed.
