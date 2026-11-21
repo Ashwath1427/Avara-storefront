@@ -15,6 +15,11 @@ from storefront import server
 
 
 class CustomerActivationTests(unittest.TestCase):
+    def setUp(self):
+        mode = patch.dict("os.environ", {"AVARA_INSTALLER_DOWNLOADS": "false"})
+        mode.start()
+        self.addCleanup(mode.stop)
+
     def test_one_time_approval_and_plan_allowance(self):
         with TemporaryDirectory() as temp:
             root = Path(temp)

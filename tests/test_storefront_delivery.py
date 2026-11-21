@@ -25,6 +25,9 @@ class FakeResponse:
 
 class DeliveryTests(unittest.TestCase):
     def setUp(self):
+        mode = patch.dict("os.environ", {"AVARA_INSTALLER_DOWNLOADS": "false"})
+        mode.start()
+        self.addCleanup(mode.stop)
         self.temp = tempfile.TemporaryDirectory()
         self.addCleanup(self.temp.cleanup)
         self.db_patch = patch.object(server, 'DB_PATH', str(Path(self.temp.name) / 'store.db'))
