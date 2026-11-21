@@ -162,7 +162,7 @@ def owner_session(request: Request):
 def plan_slug(plan: str):
     if plan.startswith('Basic'):
         return 'basic'
-    if plan.startswith('Pro'):
+    if plan.startswith('Pro') or plan.startswith('AVARA 6-Month Plus'):
         return 'pro'
     raise HTTPException(400, 'This order has an unknown plan.')
 
@@ -173,7 +173,7 @@ class ActivationApproval(BaseModel):
 
 class SubscriptionChange(BaseModel):
     action: str = Field(pattern=r'^(pause|resume|cancel|change_plan|renew)$')
-    plan: str | None = Field(default=None, pattern=r'^(basic|pro)$')
+    plan: str | None = Field(default=None, pattern=r'^(basic|pro|six_month_plus)$')
 
 
 class InstallationCheck(BaseModel):
@@ -215,14 +215,15 @@ def activate_installation(order_id: int, data: ActivationApproval, request: Requ
         plan = plan_slug(order[0])
         if edition != plan.upper():
             raise HTTPException(409, 'The code is from a different plan. Ask the customer to open the ZIP for this order.')
-        expires = int(time.time()) + 30 * 86400
+        term_days = 180 if order[0].startswith('AVARA 6-Month Plus') else 30
+        expires = int(time.time()) + term_days * 86400
         inserted = con.execute(
             'INSERT INTO installations(code,order_id,plan,expires,state,paused_at) VALUES (?,?,?,?,?,?) ON CONFLICT DO NOTHING',
             (code, order_id, plan, expires, 'active', None),
         )
         if not inserted.rowcount:
             raise HTTPException(409, 'This activation code or order has already been used.')
-    return {'message': f'AVARA {plan.title()} activated for 30 days.'}
+    return {'message': f'AVARA {plan.title()} activated for {term_days} days.'}
 
 
 @app.post('/api/activation/check')
@@ -273,9 +274,18 @@ def change_subscription(order_id: int, data: SubscriptionChange, request: Reques
             message = 'Installation cancelled. AVARA will lock at its next online license check.'
         elif data.action == 'change_plan':
             if not data.plan:
-                raise HTTPException(400, 'Choose Basic or Pro.')
-            con.execute('UPDATE installations SET plan=? WHERE order_id=?', (data.plan, order_id))
-            message = f'Installation changed to AVARA {data.plan.title()}.'
+                raise HTTPException(400, 'Choose Basic, Pro, or 6-Month Plus.')
+            entitlement = 'pro' if data.plan in {'pro', 'six_month_plus'} else 'basic'
+            display_plan = {
+                'basic': 'Basic — ₹150/month',
+                'pro': 'Pro — ₹200/month',
+                'six_month_plus': 'AVARA 6-Month Plus — ₹1,000/6 months',
+            }[data.plan]
+            if data.plan == 'six_month_plus':
+                expires = max(expires, now + 180 * 86400)
+            con.execute('UPDATE installations SET plan=?,expires=? WHERE order_id=?', (entitlement, expires, order_id))
+            con.execute('UPDATE orders SET plan=? WHERE id=?', (display_plan, order_id))
+            message = f'Installation changed to {display_plan}.'
         else:
             new_expiry = max(now, expires) + 30 * 86400
             con.execute('UPDATE installations SET expires=? WHERE order_id=?', (new_expiry, order_id))
@@ -672,7 +682,7 @@ def approve_order(order_id: int, request: Request, background_tasks: BackgroundT
 @app.post('/api/order')
 def order(data: Order, request: Request, background_tasks: BackgroundTasks):
     user_id, name, email = session(request)
-    if not data.accepted or data.plan not in ('Basic — ₹150/month','Pro — ₹200/month') or data.addon not in ('None','Setup assistance — discuss availability'):
+    if not data.accepted or data.plan not in ('Basic — ₹150/month','Pro — ₹200/month','AVARA 6-Month Plus — ₹1,000/6 months') or data.addon not in ('None','Setup assistance — discuss availability'):
         raise HTTPException(400, 'Select a valid plan and accept the terms.')
     on_render = os.getenv('RENDER') == 'true'
     test_mode = not on_render and os.getenv('AVARA_STORE_TEST_MODE') == '1' and request.client and request.client.host in ('127.0.0.1', '::1')

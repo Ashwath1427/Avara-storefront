@@ -48,7 +48,8 @@ function renderOrder(order){
     if(currentState!=='cancelled') controls.append(controlButton('Cancel','cancel',order.id,'danger'));
     const planControl=document.createElement('div');planControl.className='plan-control';
     const select=document.createElement('select');select.setAttribute('aria-label','Change activation plan');
-    for(const value of ['basic','pro']){const option=document.createElement('option');option.value=value;option.textContent=value[0].toUpperCase()+value.slice(1);option.selected=value===order.activation_plan;select.append(option);}
+    const selectedPlan=order.plan.startsWith('AVARA 6-Month Plus')?'six_month_plus':order.activation_plan;
+    for(const [value,label] of [['basic','Basic'],['pro','Pro'],['six_month_plus','6-Month Plus']]){const option=document.createElement('option');option.value=value;option.textContent=label;option.selected=value===selectedPlan;select.append(option);}
     const change=document.createElement('button');change.className='btn secondary';change.type='button';change.textContent='Change plan';
     change.onclick=()=>subscriptionChange(order.id,'change_plan',change,select.value);
     planControl.append(select,change);controls.append(planControl);action.append(state,controls);

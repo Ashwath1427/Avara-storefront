@@ -89,6 +89,10 @@ class DeliveryTests(unittest.TestCase):
         server.change_subscription(1, server.SubscriptionChange(action='resume'), owner)
         active = server.check_installation(server.InstallationCheck(token=token), Response())
         self.assertEqual((active['status'], active['plan']), ('active', 'pro'))
+        server.change_subscription(1, server.SubscriptionChange(action='change_plan', plan='six_month_plus'), owner)
+        listing = server.admin_orders(owner)['orders'][0]
+        self.assertTrue(listing['plan'].startswith('AVARA 6-Month Plus'))
+        self.assertGreaterEqual(listing['activation_expires'], int(__import__('time').time()) + 180 * 86400)
         before = active['expires']
         server.change_subscription(1, server.SubscriptionChange(action='renew'), owner)
         self.assertGreater(
@@ -155,6 +159,12 @@ class DeliveryTests(unittest.TestCase):
                     BackgroundTasks(),
                 )
                 self.assertIn('Test order #', result['message'])
+                six_month = server.order(
+                    server.Order(plan='AVARA 6-Month Plus — ₹1,000/6 months', addon='None', accepted=True),
+                    request,
+                    BackgroundTasks(),
+                )
+                self.assertIn('Test order #', six_month['message'])
                 with self.assertRaises(HTTPException) as error:
                     server.order(
                         server.Order(plan='Pro — ₹599/month', addon='None', accepted=True),
@@ -162,6 +172,19 @@ class DeliveryTests(unittest.TestCase):
                         BackgroundTasks(),
                     )
         self.assertEqual(error.exception.status_code, 400)
+
+    def test_six_month_plus_activation_lasts_180_days_and_uses_pro_release(self):
+        owner = self.owner_request()
+        token = '56' * 32
+        digest = hashlib.sha256(bytes.fromhex(token)).hexdigest()[:32]
+        with server.db() as con:
+            con.execute("UPDATE orders SET plan='AVARA 6-Month Plus — ₹1,000/6 months',status='approved' WHERE id=1")
+        before = int(__import__('time').time())
+        server.activate_installation(1, server.ActivationApproval(code='PRO-' + digest), owner)
+        status = server.check_installation(server.InstallationCheck(token=token), Response())
+        self.assertEqual(status['plan'], 'pro')
+        self.assertGreaterEqual(status['expires'], before + 180 * 86400)
+        self.assertEqual(server.plan_filename('AVARA 6-Month Plus — ₹1,000/6 months'), 'avara-pro.zip')
 
     def test_private_supabase_storage_can_supply_release_bundle(self):
         self.bundle.unlink()
