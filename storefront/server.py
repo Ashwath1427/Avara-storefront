@@ -25,6 +25,7 @@ from pydantic import BaseModel, Field
 ROOT = Path(__file__).resolve().parent
 DB_PATH = os.environ.get('AVARA_STORE_DB', str(ROOT / 'store.db'))
 DATABASE_URL = os.environ.get('AVARA_STORE_DATABASE_URL', '').strip()
+SUPABASE_CA_PATH = ROOT / 'supabase-ca.crt'
 SESSION_SECONDS = 14 * 86400
 logger = logging.getLogger('uvicorn.error')
 
@@ -86,7 +87,6 @@ class StoreConnection(sqlite3.Connection):
 
 
 def postgres_connection():
-    import certifi
     import psycopg
 
     class StorePostgresConnection(psycopg.Connection):
@@ -97,7 +97,10 @@ def postgres_connection():
             return super().execute(query.replace('?', '%s') if params is not None else query, params, **kwargs)
 
     con = StorePostgresConnection.connect(
-        DATABASE_URL, connect_timeout=8, sslmode='verify-full', sslrootcert=certifi.where(),
+        DATABASE_URL,
+        connect_timeout=8,
+        sslmode='verify-full',
+        sslrootcert=str(SUPABASE_CA_PATH),
     )
     try:
         con.execute('SET LOCAL search_path TO avara_store, pg_catalog')
