@@ -176,12 +176,9 @@ class DeliveryTests(unittest.TestCase):
                     BackgroundTasks(),
                 )
                 self.assertIn('Test order #', result['message'])
-                six_month = server.order(
-                    server.Order(plan='AVARA 6-Month Plus — ₹1,000/6 months', addon='None', accepted=True),
-                    request,
-                    BackgroundTasks(),
-                )
-                self.assertIn('Test order #', six_month['message'])
+                for plan in ('6-Month Basic — ₹1,000/6 months', '6-Month Pro — ₹1,400/6 months'):
+                    six_month = server.order(server.Order(plan=plan, addon='None', accepted=True), request, BackgroundTasks())
+                    self.assertIn('Test order #', six_month['message'])
                 with self.assertRaises(HTTPException) as error:
                     server.order(
                         server.Order(plan='Pro — ₹599/month', addon='None', accepted=True),
@@ -202,6 +199,18 @@ class DeliveryTests(unittest.TestCase):
         self.assertEqual(status['plan'], 'pro')
         self.assertGreaterEqual(status['expires'], before + 180 * 86400)
         self.assertEqual(server.plan_filename('AVARA 6-Month Plus — ₹1,000/6 months'), 'avara-pro.zip')
+
+    def test_six_month_plans_have_correct_edition_and_duration(self):
+        for index, (plan, edition) in enumerate((('6-Month Basic — ₹1,000/6 months', 'basic'), ('6-Month Pro — ₹1,400/6 months', 'pro')), start=1):
+            token = f'{index:02x}' * 32
+            digest = hashlib.sha256(bytes.fromhex(token)).hexdigest()[:32]
+            with server.db() as con:
+                con.execute('INSERT INTO orders(id,user_id,plan,addon,terms_version,created,status) VALUES(?,1,?,?,?,0,?)', (index + 10, plan, 'None', 'test', 'approved'))
+            before = int(__import__('time').time())
+            server.activate_installation(index + 10, server.ActivationApproval(code=edition.upper() + '-' + digest), self.owner_request())
+            status = server.check_installation(server.InstallationCheck(token=token), Response())
+            self.assertEqual(status['plan'], edition)
+            self.assertGreaterEqual(status['expires'], before + 180 * 86400)
 
     def test_private_supabase_storage_can_supply_release_bundle(self):
         self.bundle.unlink()

@@ -160,9 +160,9 @@ def owner_session(request: Request):
 
 
 def plan_slug(plan: str):
-    if plan.startswith('Basic'):
+    if plan.startswith(('Basic', '6-Month Basic')):
         return 'basic'
-    if plan.startswith('Pro') or plan.startswith('AVARA 6-Month Plus'):
+    if plan.startswith(('Pro', '6-Month Pro', 'AVARA 6-Month Plus')):
         return 'pro'
     raise HTTPException(400, 'This order has an unknown plan.')
 
@@ -173,7 +173,7 @@ class ActivationApproval(BaseModel):
 
 class SubscriptionChange(BaseModel):
     action: str = Field(pattern=r'^(pause|resume|cancel|change_plan|renew)$')
-    plan: str | None = Field(default=None, pattern=r'^(basic|pro|six_month_plus)$')
+    plan: str | None = Field(default=None, pattern=r'^(basic|pro|six_month_basic|six_month_pro|six_month_plus)$')
 
 
 class InstallationCheck(BaseModel):
@@ -215,7 +215,7 @@ def activate_installation(order_id: int, data: ActivationApproval, request: Requ
         plan = plan_slug(order[0])
         if edition != plan.upper():
             raise HTTPException(409, 'The code is from a different plan. Ask the customer to open the ZIP for this order.')
-        term_days = 180 if order[0].startswith('AVARA 6-Month Plus') else 30
+        term_days = 180 if order[0].startswith(('AVARA 6-Month Plus', '6-Month Basic', '6-Month Pro')) else 30
         expires = int(time.time()) + term_days * 86400
         inserted = con.execute(
             'INSERT INTO installations(code,order_id,plan,expires,state,paused_at) VALUES (?,?,?,?,?,?) ON CONFLICT DO NOTHING',
@@ -275,13 +275,15 @@ def change_subscription(order_id: int, data: SubscriptionChange, request: Reques
         elif data.action == 'change_plan':
             if not data.plan:
                 raise HTTPException(400, 'Choose Basic, Pro, or 6-Month Plus.')
-            entitlement = 'pro' if data.plan in {'pro', 'six_month_plus'} else 'basic'
+            entitlement = 'pro' if data.plan in {'pro', 'six_month_plus', 'six_month_pro'} else 'basic'
             display_plan = {
                 'basic': 'Basic — ₹150/month',
                 'pro': 'Pro — ₹200/month',
                 'six_month_plus': 'AVARA 6-Month Plus — ₹1,000/6 months',
+                'six_month_basic': '6-Month Basic — ₹1,000/6 months',
+                'six_month_pro': '6-Month Pro — ₹1,400/6 months',
             }[data.plan]
-            if data.plan == 'six_month_plus':
+            if data.plan in {'six_month_plus', 'six_month_basic', 'six_month_pro'}:
                 expires = max(expires, now + 180 * 86400)
             con.execute('UPDATE installations SET plan=?,expires=? WHERE order_id=?', (entitlement, expires, order_id))
             con.execute('UPDATE orders SET plan=? WHERE id=?', (display_plan, order_id))
@@ -689,7 +691,7 @@ def approve_order(order_id: int, request: Request, background_tasks: BackgroundT
 @app.post('/api/order')
 def order(data: Order, request: Request, background_tasks: BackgroundTasks):
     user_id, name, email = session(request)
-    if not data.accepted or data.plan not in ('Basic — ₹150/month','Pro — ₹200/month','AVARA 6-Month Plus — ₹1,000/6 months') or data.addon not in ('None','Setup assistance — discuss availability'):
+    if not data.accepted or data.plan not in ('Basic — ₹150/month','Pro — ₹200/month','6-Month Basic — ₹1,000/6 months','6-Month Pro — ₹1,400/6 months') or data.addon not in ('None','Setup assistance — discuss availability'):
         raise HTTPException(400, 'Select a valid plan and accept the terms.')
     on_render = os.getenv('RENDER') == 'true'
     test_mode = not on_render and os.getenv('AVARA_STORE_TEST_MODE') == '1' and request.client and request.client.host in ('127.0.0.1', '::1')
