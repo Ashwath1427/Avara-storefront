@@ -222,8 +222,8 @@ def activate_installation(order_id: int, data: ActivationApproval, request: Requ
         if not order or order[1] != 'approved':
             raise HTTPException(409, 'Only a paid and approved order can activate an installation.')
         plan = plan_slug(order[0])
-        if edition != plan.upper():
-            raise HTTPException(409, 'The code is from a different plan. Ask the customer to open the ZIP for this order.')
+        if edition not in {'BASIC', 'PRO'}:
+            raise HTTPException(409, 'Enter a valid Basic or Pro installation code.')
         term_days = 180 if order[0].startswith(('AVARA 6-Month Plus', '6-Month Basic', '6-Month Pro')) else 30
         expires = int(time.time()) + term_days * 86400
         inserted = con.execute(
