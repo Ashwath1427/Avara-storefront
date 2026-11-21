@@ -171,19 +171,33 @@ class ActivationApproval(BaseModel):
     code: str = Field(min_length=1, max_length=80)
 
 
+class SubscriptionChange(BaseModel):
+    action: str = Field(pattern=r'^(pause|resume|cancel|change_plan|renew)$')
+    plan: str | None = Field(default=None, pattern=r'^(basic|pro)$')
+
+
 class InstallationCheck(BaseModel):
     token: str = Field(pattern=r'^[a-f0-9]{64}$')
 
 
 def activation_table(con):
-    if not isinstance(con, sqlite3.Connection):
-        return
     con.execute('''CREATE TABLE IF NOT EXISTS installations (
         code TEXT PRIMARY KEY,
         order_id INTEGER NOT NULL UNIQUE REFERENCES orders(id),
         plan TEXT NOT NULL CHECK(plan IN ('basic', 'pro')),
-        expires INTEGER NOT NULL
+        expires INTEGER NOT NULL,
+        state TEXT NOT NULL DEFAULT 'active',
+        paused_at INTEGER
     )''')
+    if isinstance(con, sqlite3.Connection):
+        columns = {row[1] for row in con.execute('PRAGMA table_info(installations)')}
+        if 'state' not in columns:
+            con.execute("ALTER TABLE installations ADD COLUMN state TEXT NOT NULL DEFAULT 'active'")
+        if 'paused_at' not in columns:
+            con.execute('ALTER TABLE installations ADD COLUMN paused_at INTEGER')
+    else:
+        con.execute("ALTER TABLE installations ADD COLUMN IF NOT EXISTS state TEXT NOT NULL DEFAULT 'active'")
+        con.execute('ALTER TABLE installations ADD COLUMN IF NOT EXISTS paused_at BIGINT')
 
 
 @app.post('/api/admin/order/{order_id}/activate')
@@ -202,7 +216,10 @@ def activate_installation(order_id: int, data: ActivationApproval, request: Requ
         if edition != plan.upper():
             raise HTTPException(409, 'The code is from a different plan. Ask the customer to open the ZIP for this order.')
         expires = int(time.time()) + 30 * 86400
-        inserted = con.execute('INSERT INTO installations VALUES (?,?,?,?) ON CONFLICT DO NOTHING', (code, order_id, plan, expires))
+        inserted = con.execute(
+            'INSERT INTO installations(code,order_id,plan,expires,state,paused_at) VALUES (?,?,?,?,?,?) ON CONFLICT DO NOTHING',
+            (code, order_id, plan, expires, 'active', None),
+        )
         if not inserted.rowcount:
             raise HTTPException(409, 'This activation code or order has already been used.')
     return {'message': f'AVARA {plan.title()} activated for 30 days.'}
@@ -215,15 +232,55 @@ def check_installation(data: InstallationCheck, response: Response):
     with db() as con:
         activation_table(con)
         row = con.execute(
-            '''SELECT installations.plan, installations.expires
+            '''SELECT installations.plan, installations.expires, installations.state
                FROM installations JOIN orders ON orders.id=installations.order_id
                WHERE installations.code=? AND orders.status='approved' ''', (code,),
         ).fetchone()
     if not row:
         return {'status': 'pending'}
+    if row[2] != 'active':
+        return {'status': row[2], 'plan': row[0], 'expires': row[1]}
     if row[1] <= time.time():
         return {'status': 'expired'}
     return {'status': 'active', 'plan': row[0], 'expires': row[1]}
+
+
+@app.post('/api/admin/order/{order_id}/subscription')
+def change_subscription(order_id: int, data: SubscriptionChange, request: Request):
+    owner_session(request)
+    now = int(time.time())
+    with db() as con:
+        activation_table(con)
+        row = con.execute(
+            'SELECT plan,expires,state,paused_at FROM installations WHERE order_id=?', (order_id,),
+        ).fetchone()
+        if not row:
+            raise HTTPException(409, 'Activate this installation before changing its subscription.')
+        plan, expires, state, paused_at = row
+        if data.action == 'pause':
+            if state == 'active':
+                con.execute("UPDATE installations SET state='paused',paused_at=? WHERE order_id=?", (now, order_id))
+            message = 'Installation paused. AVARA will lock at its next online license check.'
+        elif data.action == 'resume':
+            extension = max(0, now - paused_at) if state in {'paused', 'cancelled'} and paused_at else 0
+            con.execute(
+                "UPDATE installations SET state='active',paused_at=NULL,expires=? WHERE order_id=?",
+                (expires + extension, order_id),
+            )
+            message = 'Installation resumed.'
+        elif data.action == 'cancel':
+            con.execute("UPDATE installations SET state='cancelled',paused_at=? WHERE order_id=?", (now, order_id))
+            message = 'Installation cancelled. AVARA will lock at its next online license check.'
+        elif data.action == 'change_plan':
+            if not data.plan:
+                raise HTTPException(400, 'Choose Basic or Pro.')
+            con.execute('UPDATE installations SET plan=? WHERE order_id=?', (data.plan, order_id))
+            message = f'Installation changed to AVARA {data.plan.title()}.'
+        else:
+            new_expiry = max(now, expires) + 30 * 86400
+            con.execute('UPDATE installations SET expires=? WHERE order_id=?', (new_expiry, order_id))
+            message = 'Activation extended by 30 days.'
+    return {'message': message}
 
 
 def plan_filename(plan: str):
@@ -568,14 +625,16 @@ def admin_orders(request: Request):
         activation_table(con)
         rows = con.execute(
             '''SELECT orders.id,users.name,users.email,orders.plan,orders.addon,orders.created,
-                      orders.status,orders.approved_at,orders.delivery_email_status,installations.expires
+                      orders.status,orders.approved_at,orders.delivery_email_status,installations.expires,
+                      installations.plan,installations.state,installations.paused_at
                FROM orders JOIN users ON users.id=orders.user_id
                LEFT JOIN installations ON installations.order_id=orders.id ORDER BY orders.id DESC'''
         ).fetchall()
     return {'orders': [
         {'id': row[0], 'name': row[1], 'email': row[2], 'plan': row[3], 'addon': row[4],
          'created': row[5], 'status': row[6], 'approved_at': row[7], 'delivery_email_status': row[8],
-         'bundle_ready': plan_bundle_ready(row[3]), 'activation_expires': row[9]}
+         'bundle_ready': plan_bundle_ready(row[3]), 'activation_expires': row[9],
+         'activation_plan': row[10], 'activation_state': row[11], 'activation_paused_at': row[12]}
         for row in rows
     ]}
 

@@ -73,6 +73,34 @@ class DeliveryTests(unittest.TestCase):
         self.assertEqual(status['plan'], 'basic')
         self.assertEqual(server.admin_orders(owner)['orders'][0]['activation_expires'], status['expires'])
 
+    def test_owner_can_pause_resume_change_renew_and_cancel_installation(self):
+        owner = self.owner_request()
+        token = '34' * 32
+        digest = hashlib.sha256(bytes.fromhex(token)).hexdigest()[:32]
+        with server.db() as con:
+            con.execute("UPDATE orders SET status='approved' WHERE id=1")
+        server.activate_installation(1, server.ActivationApproval(code='BASIC-' + digest), owner)
+
+        server.change_subscription(1, server.SubscriptionChange(action='pause'), owner)
+        self.assertEqual(
+            server.check_installation(server.InstallationCheck(token=token), Response())['status'], 'paused'
+        )
+        server.change_subscription(1, server.SubscriptionChange(action='change_plan', plan='pro'), owner)
+        server.change_subscription(1, server.SubscriptionChange(action='resume'), owner)
+        active = server.check_installation(server.InstallationCheck(token=token), Response())
+        self.assertEqual((active['status'], active['plan']), ('active', 'pro'))
+        before = active['expires']
+        server.change_subscription(1, server.SubscriptionChange(action='renew'), owner)
+        self.assertGreater(
+            server.check_installation(server.InstallationCheck(token=token), Response())['expires'], before
+        )
+        server.change_subscription(1, server.SubscriptionChange(action='cancel'), owner)
+        listing = server.admin_orders(owner)['orders'][0]
+        self.assertEqual((listing['activation_plan'], listing['activation_state']), ('pro', 'cancelled'))
+        self.assertEqual(
+            server.check_installation(server.InstallationCheck(token=token), Response())['status'], 'cancelled'
+        )
+
     def test_owner_approval_requires_key_and_existing_plan_bundle(self):
         with self.assertRaises(HTTPException) as error:
             server.admin_orders(self.owner_request('wrong-key-that-is-still-long-enough'))

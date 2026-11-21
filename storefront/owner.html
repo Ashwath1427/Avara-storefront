@@ -6,7 +6,7 @@
   <meta name="robots" content="noindex,nofollow">
   <title>AVARA Owner — Order approvals</title>
   <style>
-    :root{color-scheme:dark;--bg:#070b12;--panel:#0c1421;--line:#1b3447;--cyan:#54eaff;--text:#edf5ff;--muted:#9aacc2}*{box-sizing:border-box}body{margin:0;background:radial-gradient(ellipse at 70% 0%,#10283a 0,transparent 38%),var(--bg);color:var(--text);font:16px/1.55 Inter,Segoe UI,Arial,sans-serif}.wrap{max-width:1000px;margin:auto;padding:28px}.eyebrow{color:var(--cyan);font:700 12px monospace;letter-spacing:.25em}h1{margin:10px 0}.panel,.order{border:1px solid var(--line);border-radius:18px;background:var(--panel);padding:22px}.login{display:flex;gap:10px;align-items:end;margin:28px 0}.login label{flex:1;color:var(--muted)}input{display:block;width:100%;margin-top:7px;padding:13px;border:1px solid #27455d;border-radius:10px;background:#070d16;color:var(--text);font:inherit}.btn{border:0;border-radius:10px;padding:13px 18px;background:linear-gradient(110deg,#17b9d1,#7283ff);color:white;font-weight:750;cursor:pointer}.btn:disabled{opacity:.55;cursor:not-allowed}.orders{display:grid;gap:12px;margin-top:18px}.order{display:grid;grid-template-columns:1fr auto;gap:20px;align-items:center}.order h2{font-size:18px;margin:0 0 8px}.meta{color:var(--muted);font-size:14px}.status{color:#ffd486}.success{color:#6ff3d0}.notice{min-height:25px;color:#ffd486}.missing{color:#ff8d99;font-size:13px}@media(max-width:640px){.login,.order{display:block}.login .btn,.order .btn{margin-top:12px;width:100%}}
+    :root{color-scheme:dark;--bg:#070b12;--panel:#0c1421;--line:#1b3447;--cyan:#54eaff;--text:#edf5ff;--muted:#9aacc2}*{box-sizing:border-box}body{margin:0;background:radial-gradient(ellipse at 70% 0%,#10283a 0,transparent 38%),var(--bg);color:var(--text);font:16px/1.55 Inter,Segoe UI,Arial,sans-serif}.wrap{max-width:1100px;margin:auto;padding:28px}.eyebrow{color:var(--cyan);font:700 12px monospace;letter-spacing:.25em}h1{margin:10px 0}.panel,.order{border:1px solid var(--line);border-radius:18px;background:var(--panel);padding:22px}.login{display:flex;gap:10px;align-items:end;margin:28px 0}.login label{flex:1;color:var(--muted)}input,select{display:block;width:100%;margin-top:7px;padding:13px;border:1px solid #27455d;border-radius:10px;background:#070d16;color:var(--text);font:inherit}.btn{border:0;border-radius:10px;padding:11px 16px;background:linear-gradient(110deg,#17b9d1,#7283ff);color:white;font-weight:750;cursor:pointer}.btn.secondary{background:#14263a;border:1px solid #2d506c}.btn.danger{background:#7a2733;border:1px solid #b84a5a}.btn:disabled{opacity:.55;cursor:not-allowed}.orders{display:grid;gap:12px;margin-top:18px}.order{display:grid;grid-template-columns:minmax(0,1fr) minmax(300px,auto);gap:20px;align-items:center}.order h2{font-size:18px;margin:0 0 8px}.meta{color:var(--muted);font-size:14px}.status{color:#ffd486}.success{color:#6ff3d0}.notice{min-height:25px;color:#ffd486}.missing{color:#ff8d99;font-size:13px}.subscription{min-width:320px}.subscription-state{margin-bottom:10px;text-align:right}.controls{display:flex;flex-wrap:wrap;gap:8px;justify-content:flex-end}.plan-control{display:flex;gap:8px;width:100%;justify-content:flex-end}.plan-control select{width:auto;min-width:135px;margin:0;padding:10px}@media(max-width:760px){.login,.order{display:block}.login .btn,.order>.btn{margin-top:12px;width:100%}.subscription{min-width:0;margin-top:18px}.subscription-state{text-align:left}.controls,.plan-control{justify-content:flex-start}}
   </style>
 </head>
 <body><main class="wrap"><div class="eyebrow">PRIVATE OWNER CONTROL</div><h1>AVARA order approvals</h1><p class="meta">Enter the private owner key configured in Render. Never share this key or place it in public source code.</p>
@@ -36,7 +36,22 @@ function renderOrder(order){
   const action=document.createElement('div');
   if(order.activation_expires){
     const expiry=new Date(order.activation_expires*1000);
-    action.textContent=expiry>Date.now()?'Activated until '+expiry.toLocaleDateString():'Activation expired';
+    action.className='subscription';
+    const state=document.createElement('div');state.className='subscription-state';
+    const currentState=order.activation_state||'active';
+    state.textContent=(currentState==='active'&&expiry<=Date.now()?'Expired':currentState[0].toUpperCase()+currentState.slice(1))+' · '+(order.activation_plan||'').toUpperCase()+' · until '+expiry.toLocaleDateString();
+    state.className+=' '+(currentState==='active'&&expiry>Date.now()?'success':'status');
+    const controls=document.createElement('div');controls.className='controls';
+    if(currentState==='active') controls.append(controlButton('Pause','pause',order.id,'secondary'));
+    else controls.append(controlButton('Continue','resume',order.id,''));
+    controls.append(controlButton('Add 30 days','renew',order.id,'secondary'));
+    if(currentState!=='cancelled') controls.append(controlButton('Cancel','cancel',order.id,'danger'));
+    const planControl=document.createElement('div');planControl.className='plan-control';
+    const select=document.createElement('select');select.setAttribute('aria-label','Change activation plan');
+    for(const value of ['basic','pro']){const option=document.createElement('option');option.value=value;option.textContent=value[0].toUpperCase()+value.slice(1);option.selected=value===order.activation_plan;select.append(option);}
+    const change=document.createElement('button');change.className='btn secondary';change.type='button';change.textContent='Change plan';
+    change.onclick=()=>subscriptionChange(order.id,'change_plan',change,select.value);
+    planControl.append(select,change);controls.append(planControl);action.append(state,controls);
   }else if(order.status==='approved'){
     const form=document.createElement('form');
     const label=document.createElement('label');
@@ -70,6 +85,16 @@ function renderOrder(order){
     if(!order.bundle_ready){const missing=document.createElement('div');missing.className='missing';missing.textContent='Plan ZIP is missing';action.append(missing);}
   }
   card.append(action);return card;
+}
+function controlButton(label,action,id,style){
+  const button=document.createElement('button');button.className='btn '+style;button.type='button';button.textContent=label;
+  button.onclick=()=>subscriptionChange(id,action,button);return button;
+}
+async function subscriptionChange(id,action,button,plan){
+  if(action==='cancel'&&!confirm('Cancel this AVARA installation? You can restore it later with Continue.'))return;
+  button.disabled=true;notice.textContent='Updating installation…';
+  try{const result=await ownerApi('/api/admin/order/'+id+'/subscription','POST',{action,plan:plan||null});await loadOrders();notice.textContent=result.message;}
+  catch(error){notice.textContent=error.message;button.disabled=false;}
 }
 async function loadOrders(){
   loadButton.disabled=true;notice.textContent='Loading orders…';orders.textContent='';

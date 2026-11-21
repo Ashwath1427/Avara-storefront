@@ -36,8 +36,12 @@ create table if not exists avara_store.installations (
     code text primary key,
     order_id bigint not null unique references avara_store.orders(id),
     plan text not null check(plan in ('basic','pro')),
-    expires bigint not null
+    expires bigint not null,
+    state text not null default 'active' check(state in ('active','paused','cancelled')),
+    paused_at bigint
 );
+alter table avara_store.installations add column if not exists state text not null default 'active';
+alter table avara_store.installations add column if not exists paused_at bigint;
 create table if not exists avara_store.reward_locks (
     id text primary key,
     pin_hash text not null unique,
