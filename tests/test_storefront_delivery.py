@@ -1,5 +1,6 @@
 """Approval and delivery tests use disposable data and never contact email providers."""
 import gc
+import hashlib
 import json
 import tempfile
 import unittest
@@ -7,7 +8,7 @@ from pathlib import Path
 from types import SimpleNamespace
 from unittest.mock import patch
 
-from fastapi import BackgroundTasks, HTTPException
+from fastapi import BackgroundTasks, HTTPException, Response
 from storefront import server
 
 
@@ -54,6 +55,23 @@ class DeliveryTests(unittest.TestCase):
 
     def customer_request(self):
         return SimpleNamespace()
+
+    def test_approved_order_exposes_activation_and_redeems_code_once(self):
+        owner = self.owner_request()
+        with server.db() as con:
+            con.execute("UPDATE orders SET status='approved' WHERE id=1")
+        listing = server.admin_orders(owner)
+        self.assertIsNone(listing['orders'][0]['activation_expires'])
+        token = '12' * 32
+        digest = hashlib.sha256(bytes.fromhex(token)).hexdigest()[:32]
+        approval = server.ActivationApproval(code='BASIC-' + digest)
+        server.activate_installation(1, approval, owner)
+        with self.assertRaises(HTTPException) as error:
+            server.activate_installation(1, approval, owner)
+        self.assertEqual(error.exception.status_code, 409)
+        status = server.check_installation(server.InstallationCheck(token=token), Response())
+        self.assertEqual(status['plan'], 'basic')
+        self.assertEqual(server.admin_orders(owner)['orders'][0]['activation_expires'], status['expires'])
 
     def test_owner_approval_requires_key_and_existing_plan_bundle(self):
         with self.assertRaises(HTTPException) as error:

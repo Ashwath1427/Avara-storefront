@@ -1,9 +1,11 @@
 """Standalone AVARA cash-order service; deploy separately from the desktop app."""
+import asyncio
 import hashlib
 import hmac
 import json
 import logging
 import os
+import re
 import secrets
 import smtplib
 import sqlite3
@@ -13,17 +15,44 @@ import urllib.request
 from urllib.error import HTTPError
 from urllib.parse import quote
 from email.message import EmailMessage
-from contextlib import contextmanager
+from contextlib import asynccontextmanager, contextmanager
 from pathlib import Path
 
-from fastapi import BackgroundTasks, FastAPI, HTTPException, Request
+from fastapi import BackgroundTasks, FastAPI, HTTPException, Request, Response
 from fastapi.responses import FileResponse, StreamingResponse
 from pydantic import BaseModel, Field
 
 ROOT = Path(__file__).resolve().parent
 DB_PATH = os.environ.get('AVARA_STORE_DB', str(ROOT / 'store.db'))
-app = FastAPI(docs_url=None, redoc_url=None, openapi_url=None)
+DATABASE_URL = os.environ.get('AVARA_STORE_DATABASE_URL', '').strip()
+SESSION_SECONDS = 14 * 86400
 logger = logging.getLogger('uvicorn.error')
+
+
+def check_postgres_schema():
+    with postgres_connection() as con:
+        for table in ('users', 'sessions', 'orders', 'order_email', 'installations',
+                      'reward_locks', 'reward_claims', 'reward_attempts'):
+            con.execute(f'SELECT 1 FROM {table} LIMIT 0')
+
+
+@asynccontextmanager
+async def lifespan(_app):
+    if os.getenv('RENDER') == 'true' and not DATABASE_URL:
+        raise RuntimeError('Set AVARA_STORE_DATABASE_URL before deploying to Render.')
+    if DATABASE_URL:
+        try:
+            await asyncio.to_thread(check_postgres_schema)
+        except Exception as exc:
+            # Connection errors may include private database details.
+            raise RuntimeError(
+                f'Storefront database check failed ({type(exc).__name__}). '
+                'Verify the connection and run supabase-persistence.sql.'
+            ) from None
+    yield
+
+
+app = FastAPI(docs_url=None, redoc_url=None, openapi_url=None, lifespan=lifespan)
 
 
 class StoreConnection(sqlite3.Connection):
@@ -35,7 +64,31 @@ class StoreConnection(sqlite3.Connection):
             self.close()
 
 
+def postgres_connection():
+    import certifi
+    import psycopg
+
+    class StorePostgresConnection(psycopg.Connection):
+        def execute(self, query, params=None, **kwargs):
+            if query == 'BEGIN IMMEDIATE':
+                # Serialize the existing read-then-write reward workflow across workers.
+                query = 'SELECT pg_advisory_xact_lock(716683203)'
+            return super().execute(query.replace('?', '%s') if params is not None else query, params, **kwargs)
+
+    con = StorePostgresConnection.connect(
+        DATABASE_URL, connect_timeout=8, sslmode='verify-full', sslrootcert=certifi.where(),
+    )
+    try:
+        con.execute('SET LOCAL search_path TO avara_store, pg_catalog')
+    except BaseException:
+        con.close()
+        raise
+    return con
+
+
 def db():
+    if DATABASE_URL:
+        return postgres_connection()
     con = sqlite3.connect(DB_PATH, timeout=10, factory=StoreConnection)
     con.execute('PRAGMA foreign_keys=ON')
     con.executescript('''CREATE TABLE IF NOT EXISTS users (id INTEGER PRIMARY KEY, name TEXT NOT NULL, email TEXT NOT NULL UNIQUE, salt BLOB NOT NULL, password BLOB NOT NULL);
@@ -88,6 +141,65 @@ def plan_slug(plan: str):
     if plan.startswith('Pro'):
         return 'pro'
     raise HTTPException(400, 'This order has an unknown plan.')
+
+
+class ActivationApproval(BaseModel):
+    code: str = Field(min_length=1, max_length=80)
+
+
+class InstallationCheck(BaseModel):
+    token: str = Field(pattern=r'^[a-f0-9]{64}$')
+
+
+def activation_table(con):
+    if not isinstance(con, sqlite3.Connection):
+        return
+    con.execute('''CREATE TABLE IF NOT EXISTS installations (
+        code TEXT PRIMARY KEY,
+        order_id INTEGER NOT NULL UNIQUE REFERENCES orders(id),
+        plan TEXT NOT NULL CHECK(plan IN ('basic', 'pro')),
+        expires INTEGER NOT NULL
+    )''')
+
+
+@app.post('/api/admin/order/{order_id}/activate')
+def activate_installation(order_id: int, data: ActivationApproval, request: Request):
+    owner_session(request)
+    edition, _, digits = data.code.strip().upper().partition('-')
+    code = digits.replace('-', '')
+    if not re.fullmatch(r'[0-9A-F]{32}', code):
+        raise HTTPException(400, 'Enter the activation code shown in the customer’s AVARA app.')
+    with db() as con:
+        activation_table(con)
+        order = con.execute('SELECT plan,status FROM orders WHERE id=?', (order_id,)).fetchone()
+        if not order or order[1] != 'approved':
+            raise HTTPException(409, 'Only a paid and approved order can activate an installation.')
+        plan = plan_slug(order[0])
+        if edition != plan.upper():
+            raise HTTPException(409, 'The code is from a different plan. Ask the customer to open the ZIP for this order.')
+        expires = int(time.time()) + 30 * 86400
+        inserted = con.execute('INSERT INTO installations VALUES (?,?,?,?) ON CONFLICT DO NOTHING', (code, order_id, plan, expires))
+        if not inserted.rowcount:
+            raise HTTPException(409, 'This activation code or order has already been used.')
+    return {'message': f'AVARA {plan.title()} activated for 30 days.'}
+
+
+@app.post('/api/activation/check')
+def check_installation(data: InstallationCheck, response: Response):
+    response.headers['Cache-Control'] = 'no-store'
+    code = hashlib.sha256(bytes.fromhex(data.token)).hexdigest()[:32].upper()
+    with db() as con:
+        activation_table(con)
+        row = con.execute(
+            '''SELECT installations.plan, installations.expires
+               FROM installations JOIN orders ON orders.id=installations.order_id
+               WHERE installations.code=? AND orders.status='approved' ''', (code,),
+        ).fetchone()
+    if not row:
+        return {'status': 'pending'}
+    if row[1] <= time.time():
+        return {'status': 'expired'}
+    return {'status': 'active', 'plan': row[0], 'expires': row[1]}
 
 
 def plan_filename(plan: str):
@@ -247,11 +359,13 @@ def account(data: Account, background_tasks: BackgroundTasks):
         raise HTTPException(400, 'Enter a valid name and email address.')
     salt = secrets.token_bytes(16)
     hashed = hashlib.scrypt(data.password.encode(), salt=salt, n=16384, r=8, p=1)
-    try:
-        with db() as con:
-            con.execute('INSERT INTO users(name,email,salt,password) VALUES(?,?,?,?)', (name,email,salt,hashed))
-    except sqlite3.IntegrityError:
-        raise HTTPException(409, 'This account already exists. Please sign in.')
+    with db() as con:
+        inserted = con.execute(
+            'INSERT INTO users(name,email,salt,password) VALUES(?,?,?,?) ON CONFLICT(email) DO NOTHING',
+            (name, email, salt, hashed),
+        )
+        if not inserted.rowcount:
+            raise HTTPException(409, 'This account already exists. Please sign in.')
     background_tasks.add_task(_sync_supabase_account, email, name)
     return {'message':'Account created. Please sign in.'}
 
@@ -264,10 +378,10 @@ def login(data: Credentials, background_tasks: BackgroundTasks):
         if not row or not hmac.compare_digest(value, row[2]):
             raise HTTPException(401, 'Email or password is incorrect.')
         token = secrets.token_urlsafe(32)
-        con.execute('INSERT INTO sessions VALUES(?,?,?)', (hashlib.sha256(token.encode()).hexdigest(), row[0], int(time.time())+86400))
+        con.execute('INSERT INTO sessions VALUES(?,?,?)', (hashlib.sha256(token.encode()).hexdigest(), row[0], int(time.time())+SESSION_SECONDS))
     from fastapi.responses import JSONResponse
     response = JSONResponse({'message':'Signed in.', 'name': row[3]})
-    response.set_cookie('avara_store_session', token, httponly=True, secure=os.environ.get('AVARA_STORE_SECURE_COOKIE','1') == '1', samesite='strict', max_age=86400)
+    response.set_cookie('avara_store_session', token, httponly=True, secure=os.environ.get('AVARA_STORE_SECURE_COOKIE','1') == '1', samesite='strict', max_age=SESSION_SECONDS)
     background_tasks.add_task(_sync_supabase_account, data.email.strip().lower(), row[3])
     return response
 
@@ -345,7 +459,8 @@ def _send_ready_email(order_id, name, email, plan, public_url, transport):
         f'Hello {name},\n\nYour {plan} order has been approved and is ready.\n\n'
         f'1. Open {public_url}/#order and sign in with the account used for this order.\n'
         f'2. Open Your orders and choose Download AVARA.\n'
-        f'3. Read the setup guide before starting: {public_url}/setup.html\n\n'
+        f'3. Read the setup guide before starting: {public_url}/setup.html\n'
+        '4. Launch AVARA and send the owner the activation code shown in the app and your order number.\n\n'
         'You will need either Ollama installed locally or compatible AI-provider API keys for AI features. '
         'Some integrations require their own accounts and credentials. Never share your account password or API keys.\n\n'
         'AVARA Support'
@@ -384,6 +499,8 @@ def _deliver_ready_email(order_id, name, email, plan, public_url, transport):
         con.execute('UPDATE orders SET delivery_email_status=? WHERE id=?', (status, order_id))
 
 def _save_supabase_order(order_id: int, user_id: int, name: str, email: str, plan: str, addon: str):
+    if DATABASE_URL:
+        return  # The durable order already lives in Supabase; legacy mirror IDs may collide.
     url = os.environ.get('SUPABASE_URL', '').rstrip('/')
     key = os.environ.get('SUPABASE_SERVICE_ROLE_KEY', '')
     if not url or not key:
@@ -400,6 +517,8 @@ def _save_supabase_order(order_id: int, user_id: int, name: str, email: str, pla
 
 
 def _update_supabase_order_status(order_id: int, status: str, approved_at: int):
+    if DATABASE_URL:
+        return
     url = os.environ.get('SUPABASE_URL', '').rstrip('/')
     key = os.environ.get('SUPABASE_SERVICE_ROLE_KEY', '')
     if not url or not key:
@@ -422,15 +541,17 @@ def _update_supabase_order_status(order_id: int, status: str, approved_at: int):
 def admin_orders(request: Request):
     owner_session(request)
     with db() as con:
+        activation_table(con)
         rows = con.execute(
             '''SELECT orders.id,users.name,users.email,orders.plan,orders.addon,orders.created,
-                      orders.status,orders.approved_at,orders.delivery_email_status
-               FROM orders JOIN users ON users.id=orders.user_id ORDER BY orders.id DESC'''
+                      orders.status,orders.approved_at,orders.delivery_email_status,installations.expires
+               FROM orders JOIN users ON users.id=orders.user_id
+               LEFT JOIN installations ON installations.order_id=orders.id ORDER BY orders.id DESC'''
         ).fetchall()
     return {'orders': [
         {'id': row[0], 'name': row[1], 'email': row[2], 'plan': row[3], 'addon': row[4],
          'created': row[5], 'status': row[6], 'approved_at': row[7], 'delivery_email_status': row[8],
-         'bundle_ready': plan_bundle_ready(row[3])}
+         'bundle_ready': plan_bundle_ready(row[3]), 'activation_expires': row[9]}
         for row in rows
     ]}
 
@@ -454,10 +575,12 @@ def approve_order(order_id: int, request: Request, background_tasks: BackgroundT
         if not plan_bundle_ready(plan):
             raise HTTPException(409, f'Upload {plan_filename(plan)} before approving this order.')
         approved_at = int(time.time())
-        con.execute(
-            "UPDATE orders SET status='approved',approved_at=?,delivery_email_status='pending' WHERE id=?",
+        updated = con.execute(
+            "UPDATE orders SET status='approved',approved_at=?,delivery_email_status='pending' WHERE id=? AND status='pending'",
             (approved_at, order_id),
         )
+        if not updated.rowcount:
+            return {'message': f'Order #{order_id} is already approved.', 'status': 'approved'}
     public_url = os.getenv('AVARA_STORE_PUBLIC_URL', '').strip().rstrip('/') or str(request.base_url).rstrip('/')
     background_tasks.add_task(_deliver_ready_email, order_id, name, email, plan, public_url, transport)
     background_tasks.add_task(_update_supabase_order_status, order_id, 'approved', approved_at)
@@ -475,8 +598,10 @@ def order(data: Order, request: Request, background_tasks: BackgroundTasks):
         transport = email_transport()
     status = 'pending' if transport else 'disabled'
     with db() as con:
-        cur = con.execute('INSERT INTO orders(user_id,plan,addon,terms_version,created) VALUES(?,?,?,?,?)', (user_id,data.plan,data.addon,'draft-1',int(time.time())))
-        order_id = cur.lastrowid
+        order_id = con.execute(
+            'INSERT INTO orders(user_id,plan,addon,terms_version,created) VALUES(?,?,?,?,?) RETURNING id',
+            (user_id, data.plan, data.addon, 'draft-1', int(time.time())),
+        ).fetchone()[0]
         con.execute('INSERT INTO order_email VALUES(?,?,?)', (order_id, status, int(time.time())))
     if test_mode:
         return {'message': f'Test order #{order_id} saved locally. No email was sent and no payment was collected.'}
@@ -493,6 +618,10 @@ def order(data: Order, request: Request, background_tasks: BackgroundTasks):
 @contextmanager
 def reward_db():
     con = db()
+    if not isinstance(con, sqlite3.Connection):
+        with con:
+            yield con
+        return
     con.executescript('''
       CREATE TABLE IF NOT EXISTS reward_locks (
         id TEXT PRIMARY KEY, pin_hash TEXT NOT NULL UNIQUE, clues TEXT NOT NULL,
