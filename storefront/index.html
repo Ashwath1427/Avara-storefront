@@ -6,33 +6,224 @@
   <meta name="theme-color" content="#070b12">
   <title>AVARA — Your personal intelligence</title>
   <style>
-    :root{color-scheme:dark;--bg:#070b12;--panel:#0c1421;--line:#1b3447;--cyan:#54eaff;--blue:#7388ff;--text:#edf5ff;--muted:#9aacc2}*{box-sizing:border-box}body{margin:0;background:radial-gradient(ellipse at 70% 0%,#10283a 0,transparent 38%),var(--bg);color:var(--text);font:16px/1.55 Inter,Segoe UI,Arial,sans-serif}a{color:var(--cyan)}.wrap{max-width:1120px;padding:24px;margin:auto}.nav{display:flex;align-items:center;justify-content:space-between;border-bottom:1px solid var(--line);padding:10px 0 22px}.brand{display:flex;align-items:center;gap:12px;font-weight:800;letter-spacing:.22em}.mark{font-size:27px;color:var(--cyan);border:1px solid #23728a;border-radius:14px;padding:2px 12px}.nav a{text-decoration:none;color:var(--muted)}.hero{padding:90px 0 56px;max-width:780px}.eyebrow{color:var(--cyan);font:700 12px monospace;letter-spacing:.25em}.hero h1{font-size:clamp(42px,7vw,78px);line-height:1.03;margin:18px 0}.hero p{font-size:19px;color:var(--muted);max-width:650px}.btn{display:inline-block;border:0;border-radius:12px;padding:14px 20px;background:linear-gradient(110deg,#17b9d1,#7283ff);color:white;font-weight:750;text-decoration:none;cursor:pointer}.section-title{margin:28px 0}.plans,.products{display:grid;grid-template-columns:repeat(2,minmax(0,1fr));gap:18px}.card{background:linear-gradient(145deg,#101d2c,#0a111c);border:1px solid var(--line);border-radius:20px;padding:26px}.card.featured{border-color:#31cce0;box-shadow:0 0 36px #1bcce015}.price{font-size:42px;font-weight:800;margin:15px 0}.price small{font-size:15px;color:var(--muted);font-weight:500}.card ul{padding-left:20px;color:#c5d4e5}.card li{margin:8px 0}.formbox{margin:44px 0;background:#09111d;border:1px solid var(--line);border-radius:20px;padding:28px}.formgrid{display:grid;grid-template-columns:1fr 1fr;gap:14px}label{display:block;color:#c9d9e9;font-size:14px}input,select{width:100%;margin-top:7px;border:1px solid #27455d;border-radius:10px;background:#070d16;color:var(--text);padding:13px;font:inherit}input[type=checkbox]{width:auto;accent-color:var(--cyan)}.terms{margin:20px 0;color:var(--muted)}.notice{display:none;margin-top:18px;padding:14px;border:1px solid #b77b32;border-radius:10px;background:#261b0c;color:#ffe1a6}.fine{font-size:13px;color:var(--muted)}footer{border-top:1px solid var(--line);padding:24px 0;color:var(--muted)}@media(max-width:680px){.wrap{padding:18px}.hero{padding:60px 0 36px}.plans,.products,.formgrid{grid-template-columns:1fr}.card{padding:22px}}
+    :root{color-scheme:dark;--bg:#070b12;--panel:#0c1421;--line:#1b3447;--cyan:#54eaff;--blue:#7388ff;--text:#edf5ff;--muted:#9aacc2}*{box-sizing:border-box}body{margin:0;background:radial-gradient(ellipse at 70% 0%,#10283a 0,transparent 38%),var(--bg);color:var(--text);font:16px/1.55 Inter,Segoe UI,Arial,sans-serif}a{color:var(--cyan)}.wrap{max-width:1120px;padding:24px;margin:auto}.nav{display:flex;align-items:center;justify-content:space-between;border-bottom:1px solid var(--line);padding:10px 0 22px}.nav>div:last-child{flex-wrap:wrap;justify-content:flex-end}.brand{display:flex;align-items:center;gap:12px;font-weight:800;letter-spacing:.22em}.mark{font-size:27px;color:var(--cyan);border:1px solid #23728a;border-radius:14px;padding:2px 12px}.nav a{text-decoration:none;color:var(--muted)}.hero{padding:90px 0 56px;max-width:780px}.eyebrow{color:var(--cyan);font:700 12px monospace;letter-spacing:.25em}.hero h1{font-size:clamp(42px,7vw,78px);line-height:1.03;margin:18px 0}.hero p{font-size:19px;color:var(--muted);max-width:650px}.btn{display:inline-block;border:0;border-radius:12px;padding:14px 20px;background:linear-gradient(110deg,#17b9d1,#7283ff);color:white;font-weight:750;text-decoration:none;cursor:pointer}.section-title{margin:28px 0}.plans,.products{display:grid;grid-template-columns:repeat(2,minmax(0,1fr));gap:18px}.card{background:linear-gradient(145deg,#101d2c,#0a111c);border:1px solid var(--line);border-radius:20px;padding:26px}.card.featured{border-color:#31cce0;box-shadow:0 0 36px #1bcce015}.price{font-size:42px;font-weight:800;margin:15px 0}.price small{font-size:15px;color:var(--muted);font-weight:500}.old-price{font-size:.55em;color:var(--muted);text-decoration:line-through;text-decoration-thickness:2px}.card ul{padding-left:20px;color:#c5d4e5}.card li{margin:8px 0}.formbox{margin:44px 0;background:#09111d;border:1px solid var(--line);border-radius:20px;padding:28px}.formgrid{display:grid;grid-template-columns:1fr 1fr;gap:14px}label{display:block;color:#c9d9e9;font-size:14px}input,select{width:100%;margin-top:7px;border:1px solid #27455d;border-radius:10px;background:#070d16;color:var(--text);padding:13px;font:inherit}input[type=checkbox]{width:auto;accent-color:var(--cyan)}.terms{margin:20px 0;color:var(--muted)}.notice{display:none;margin-top:18px;padding:14px;border:1px solid #b77b32;border-radius:10px;background:#261b0c;color:#ffe1a6}.fine{font-size:13px;color:var(--muted)}footer{border-top:1px solid var(--line);padding:24px 0;color:var(--muted)}@media(max-width:680px){.wrap{padding:18px}.nav{align-items:flex-start;gap:18px}.hero{padding:60px 0 36px}.plans,.products,.formgrid{grid-template-columns:1fr}.card{padding:22px}}
+    [hidden]{display:none!important}.auth-tabs{display:flex;gap:8px;margin:18px 0}.auth-tabs [aria-pressed="false"]{background:#152339}.formbox form > button{margin-top:16px}button:disabled{opacity:.65;cursor:wait}
+    .comparison{margin-top:28px}.comparison-heading{display:flex;align-items:end;justify-content:space-between;gap:20px;margin-bottom:14px}.comparison-heading h3{font-size:25px;margin:6px 0 0}.comparison-wrap{overflow-x:auto;border:1px solid var(--line);border-radius:18px;background:#09111d}.comparison-table{width:100%;min-width:720px;border-collapse:collapse}.comparison-table th,.comparison-table td{padding:16px 18px;border-bottom:1px solid var(--line);text-align:center;vertical-align:middle}.comparison-table th:first-child,.comparison-table td:first-child{text-align:left;width:44%}.comparison-table thead th{position:relative;background:#0f1a29;color:var(--text);font-size:15px}.comparison-table thead th:last-child{background:linear-gradient(145deg,#102738,#101a32);color:var(--cyan)}.comparison-table tbody tr:last-child td{border-bottom:0}.comparison-table tbody tr:hover{background:#0e1927}.comparison-table td:not(:first-child){color:#cfe0f1}.comparison-table td.yes{color:#6ff3d0;font-weight:800}.comparison-table td.limited{color:#ffd486}.comparison-actions{display:grid;grid-template-columns:44% 28% 28%;align-items:center;padding:16px 18px;border-top:1px solid var(--line);min-width:720px}.comparison-actions .btn{justify-self:center}.comparison-note{margin:12px 2px 0}.status-soon{display:inline-block;margin-left:6px;padding:2px 7px;border:1px solid #7d6731;border-radius:999px;color:#ffd486;font:700 10px monospace;letter-spacing:.08em;white-space:nowrap}@media(max-width:680px){.comparison-heading{display:block}.comparison-wrap{margin:0 -4px}.comparison-table th,.comparison-table td{padding:14px}.comparison-actions{padding:14px}.comparison-note{line-height:1.6}}
+    .customer-orders{margin-top:28px;padding-top:22px;border-top:1px solid var(--line)}.orders-top{display:flex;align-items:center;justify-content:space-between;gap:12px}.orders-top h3{margin:0}.orders-list{display:grid;gap:10px;margin-top:14px}.order-card{display:flex;justify-content:space-between;align-items:center;gap:18px;padding:16px;border:1px solid var(--line);border-radius:12px;background:#0c1725}.order-card strong,.order-card span{display:block}.order-status{text-transform:capitalize;color:#ffd486}.order-card .btn{white-space:nowrap}@media(max-width:680px){.order-card{display:block}.order-card .btn{margin-top:12px}.orders-top{align-items:start}}
   </style>
 </head>
 <body>
 <div class="wrap">
-  <nav class="nav"><div class="brand"><span class="mark">Λ</span> AVARA</div><div style="display:flex;gap:20px;align-items:center"><a href="#plans">Shop</a><a href="#order">Sign in / Sign up</a><a href="#order" id="bag-link">Bag (0)</a></div></nav>
+  <nav class="nav"><div class="brand"><span class="mark">Λ</span> AVARA</div><div style="display:flex;gap:20px;align-items:center"><a href="#plans">Shop</a><a href="setup.html">Setup guide</a><a href="#order">Sign in / Sign up</a><a href="#order" id="bag-link">Bag (0)</a></div></nav>
   <header class="hero"><div class="eyebrow">PERSONAL INTELLIGENCE, BUILT AROUND YOU</div><h1>Your day. Your ideas.<br><span style="color:var(--cyan)">One intelligent system.</span></h1><p>Meet AVARA: a desktop AI companion for planning, creating, learning, and getting things done—with a secure phone remote when you need it.</p><a class="btn" href="#plans">Choose your AVARA plan</a></header>
   <section id="plans"><div class="eyebrow">SIMPLE MONTHLY PLANS</div><h2 class="section-title">Choose the access that fits you</h2><div class="plans">
-    <article class="card"><div class="eyebrow">AVARA BASIC</div><div class="price">₹299 <small>/ month</small></div><p class="fine">A capable everyday assistant.</p><ul><li>Desktop assistant and chat</li><li>Tasks, local calendar, reminders, and day planner</li><li>Study tools, scripts, and workout tracking</li><li>Phone remote on your private Wi-Fi</li><li>Standard AI usage allowance</li></ul><button class="btn choose" data-plan="Basic">Choose Basic</button></article>
-    <article class="card featured"><div class="eyebrow">AVARA PRO · COMPLETE</div><div class="price">₹599 <small>/ month</small></div><p class="fine">The complete AVARA experience.</p><ul><li>Everything in Basic</li><li>Website and presentation creation</li><li>Google Workspace connections when configured</li><li>Higher AI and voice usage allowance</li><li>Cloud backup and priority support</li></ul><button class="btn choose" data-plan="Pro">Choose Pro</button></article>
+    <article class="card"><div class="eyebrow">AVARA BASIC · LAUNCH OFFER</div><div class="price"><span class="old-price">₹299</span> ₹150 <small>/ month</small></div><p class="fine">A capable everyday assistant.</p><ul><li>Desktop assistant and chat</li><li>Tasks, local calendar, reminders, and day planner</li><li>Study tools, scripts, and workout tracking</li><li>Phone remote on your private Wi-Fi</li><li>Standard AI usage allowance</li></ul><button class="btn choose" data-plan="Basic">Choose Basic</button></article>
+    <article class="card featured"><div class="eyebrow">AVARA PRO · LAUNCH OFFER</div><div class="price"><span class="old-price">₹599</span> ₹200 <small>/ month</small></div><p class="fine">The complete AVARA experience.</p><ul><li>Everything in Basic</li><li>Website and presentation creation</li><li>Google Workspace connections when configured</li><li>Higher AI and voice usage allowance</li><li>Priority support, with cloud backup coming soon</li></ul><button class="btn choose" data-plan="Pro">Choose Pro</button></article>
+  </div>
+  <div class="comparison" aria-labelledby="comparison-title">
+    <div class="comparison-heading"><div><div class="eyebrow">FULL PLAN COMPARISON</div><h3 id="comparison-title">Compare AVARA Basic and Pro</h3></div><p class="fine">Choose the level of access that fits how you use AVARA.</p></div>
+    <div class="comparison-wrap" tabindex="0" aria-label="Scrollable plan comparison">
+      <table class="comparison-table">
+        <thead><tr><th scope="col">Feature</th><th scope="col">Basic<br><span class="fine"><s>₹299</s> ₹150/month</span></th><th scope="col">Pro<br><span class="fine"><s>₹599</s> ₹200/month</span></th></tr></thead>
+        <tbody>
+          <tr><td>Chat and local assistant</td><td class="yes">Yes</td><td class="yes">Yes</td></tr>
+          <tr><td>Tasks, calendar, and reminders</td><td class="yes">Yes</td><td class="yes">Yes</td></tr>
+          <tr><td>Gym, study, scripts, and planner</td><td class="yes">Yes</td><td class="yes">Yes</td></tr>
+          <tr><td>Phone Remote on home Wi-Fi</td><td class="yes">Yes</td><td class="yes">Yes</td></tr>
+          <tr><td>Screen understanding</td><td class="limited">Limited monthly usage</td><td>Higher fair-use allowance</td></tr>
+          <tr><td>Website Builder</td><td class="limited">Limited projects and exports</td><td>Full builder and priority generation</td></tr>
+          <tr><td>Presentations</td><td class="limited">Limited exports</td><td>Included</td></tr>
+          <tr><td>AI model access</td><td class="limited">Standard model and capped usage</td><td>Premium routing and larger usage</td></tr>
+          <tr><td>Google Workspace integration</td><td class="limited">Read-only or limited</td><td>Full enabled integrations</td></tr>
+          <tr><td>Cloud backup and sync</td><td>Not included</td><td>Included <span class="status-soon">COMING SOON</span></td></tr>
+          <tr><td>Priority support</td><td>Not included</td><td class="yes">Yes</td></tr>
+        </tbody>
+      </table>
+      <div class="comparison-actions"><span></span><button class="btn choose" type="button" data-plan="Basic">Choose Basic</button><button class="btn choose" type="button" data-plan="Pro">Choose Pro</button></div>
+    </div>
+    <p class="fine comparison-note">Usage allowances and connected integrations depend on the active release and configured services. Cloud backup and sync will become available after its release.</p>
   </div></section>
   <section class="formbox" id="order"><div class="eyebrow">START YOUR ORDER</div><h2>Make AVARA yours</h2><p class="fine">Choose a plan, create your account once, then sign in whenever you return.</p>
-    <div style="display:flex;gap:8px;margin:18px 0"><button class="btn" type="button" id="signup-tab">Sign up</button><button class="btn" type="button" id="login-tab" style="opacity:.65">Sign in</button></div>
-    <form id="order-form"><div class="formgrid"><label>Plan<select id="plan" required><option value="">Select a plan</option><option>Basic — ₹299/month</option><option>Pro — ₹599/month</option></select></label><label>Optional add-on<select id="addon"><option>None</option><option>Setup assistance — discuss availability</option></select></label><label id="name-field">Your name<input id="name" autocomplete="name" required maxlength="100"></label><label>Email for sign-in and order updates<input id="email" type="email" autocomplete="email" required maxlength="254"></label><label>Password<input id="password" type="password" autocomplete="new-password" required minlength="12" maxlength="128" placeholder="At least 12 characters"></label><label id="confirm-field">Confirm password<input id="confirm" type="password" autocomplete="new-password" required minlength="12" maxlength="128"></label></div>
+    <div id="account-panel">
+      <div class="auth-tabs" role="group" aria-label="Account mode">
+        <button class="btn" type="button" id="login-tab" aria-pressed="true">Sign in</button>
+        <button class="btn" type="button" id="signup-tab" aria-pressed="false">Sign up</button>
+      </div>
+      <form id="account-form">
+        <div class="formgrid">
+          <label id="name-field" hidden>Your name<input id="name" autocomplete="name" maxlength="100"></label>
+          <label>Email<input id="email" type="email" autocomplete="username" required maxlength="254"></label>
+          <label>Password<input id="password" type="password" autocomplete="current-password" required minlength="12" maxlength="128"></label>
+          <label id="confirm-field" hidden>Confirm password<input id="confirm" type="password" autocomplete="new-password" minlength="12" maxlength="128"></label>
+        </div>
+        <button class="btn" id="auth-submit" type="submit">Sign in</button>
+      </form>
+    </div>
+    <p id="signed-in" hidden></p>
+    <form id="order-form" hidden><div class="formgrid"><label>Plan<select id="plan" required><option value="">Select a plan</option><option>Basic — ₹150/month</option><option>Pro — ₹200/month</option></select></label><label>Optional add-on<select id="addon"><option>None</option><option>Setup assistance — discuss availability</option></select></label></div>
       <label class="terms"><input id="accept" type="checkbox" required> I accept the <a href="terms.html" target="_blank" rel="noopener">Terms and Conditions</a> and <a href="privacy.html" target="_blank" rel="noopener">Privacy Notice</a>.</label>
-      <p class="fine">Payment method: cash. Payment and delivery arrangements are confirmed separately.</p><button class="btn" type="button" id="register">Create account</button> <button class="btn" type="button" id="signin" hidden>Sign in</button> <button class="btn" type="submit">Request cash order</button><div class="notice" id="notice" role="status"></div>
+      <p class="fine">Payment method: cash. Payment and delivery arrangements are confirmed separately.</p>
+      <button class="btn" id="order-submit" type="submit">Request cash order</button>
     </form>
+    <section class="customer-orders" id="customer-orders" hidden aria-labelledby="customer-orders-title"><div class="orders-top"><div><div class="eyebrow">DELIVERY CENTER</div><h3 id="customer-orders-title">Your orders</h3></div><button class="btn" type="button" id="refresh-orders">Refresh status</button></div><p class="fine">After AVARA approves your cash order, you will receive an email and your protected plan download will appear here. Read the <a href="setup.html">setup guide</a> before installing.</p><div class="orders-list" id="orders-list"></div></section>
+    <div class="notice" id="notice" role="status"></div>
   </section>
-  <footer><div>© AVARA · <a href="terms.html">Terms</a> · <a href="privacy.html">Privacy</a></div><p class="fine">Orders and subscriptions become active only after secure account and payment services are connected.</p></footer>
+  <footer><div>© AVARA · <a href="terms.html">Terms</a> · <a href="privacy.html">Privacy</a> · <a href="setup.html">Setup guide</a></div><p class="fine">Orders and subscriptions become active only after approval. AI features require Ollama or compatible provider API keys.</p></footer>
 </div>
 <script>
-document.querySelectorAll('.choose').forEach(b=>b.addEventListener('click',()=>{document.querySelector('#plan').value=b.dataset.plan+' — ₹'+(b.dataset.plan==='Basic'?'299':'599')+'/month';document.querySelector('#bag-link').textContent='Bag (1)';document.querySelector('#order').scrollIntoView({behavior:'smooth'});}));
-const field=id=>document.getElementById(id);async function call(path,body){const n=field('notice');n.style.display='block';if(location.protocol==='file:'){n.textContent='Open the storefront through its server to use accounts and orders.';return;}try{const r=await fetch(path,{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify(body)});const d=await r.json();n.textContent=d.message||d.detail||'Request failed.';}catch(e){n.textContent='Unable to reach the order service. Please try again.';}}
-function account(){return {name:field('name').value,email:field('email').value,password:field('password').value};}
-function authMode(mode){const signup=mode==='signup';field('name-field').hidden=!signup;field('confirm-field').hidden=!signup;field('name').required=signup;field('confirm').required=signup;field('register').hidden=!signup;field('signin').hidden=signup;field('signup-tab').style.opacity=signup?'1':'.65';field('login-tab').style.opacity=signup?'.65':'1';}
-field('signup-tab').onclick=()=>authMode('signup');field('login-tab').onclick=()=>authMode('login');
-field('register').onclick=()=>{if(field('password').value!==field('confirm').value){field('notice').style.display='block';field('notice').textContent='Passwords do not match.';return;}call('/api/account',account());};field('signin').onclick=()=>call('/api/login',account());authMode('signup');
-field('order-form').addEventListener('submit',e=>{e.preventDefault();call('/api/order',{plan:field('plan').value,addon:field('addon').value,accepted:field('accept').checked});});
+document.querySelectorAll('.choose').forEach(b=>b.addEventListener('click',()=>{document.querySelector('#plan').value=b.dataset.plan+' — ₹'+(b.dataset.plan==='Basic'?'150':'200')+'/month';document.querySelector('#bag-link').textContent='Bag (1)';document.querySelector('#order').scrollIntoView({behavior:'smooth'});}));
+const field = id => document.getElementById(id);
+let signup = false;
+function notice(message) {
+  field('notice').style.display = message ? 'block' : 'none';
+  field('notice').textContent = message;
+}
+async function api(path, body) {
+  if (location.protocol === 'file:') throw new Error('Open the hosted storefront to use accounts and orders.');
+  const options = {cache: 'no-store', signal: AbortSignal.timeout(15000)};
+  if (body) Object.assign(options, {method: 'POST', headers: {'Content-Type': 'application/json'}, body: JSON.stringify(body)});
+  const response = await fetch(path, options);
+  const data = await response.json().catch(() => ({}));
+  if (!response.ok) {
+    const error = new Error(typeof data.detail === 'string' ? data.detail : 'Request failed. Check your entries and try again.');
+    error.status = response.status;
+    throw error;
+  }
+  return data;
+}
+function authMode(createAccount) {
+  signup = createAccount;
+  for (const id of ['name', 'confirm']) {
+    field(id + '-field').hidden = !signup;
+    field(id).required = signup;
+  }
+  field('password').autocomplete = signup ? 'new-password' : 'current-password';
+  field('signup-tab').setAttribute('aria-pressed', String(signup));
+  field('login-tab').setAttribute('aria-pressed', String(!signup));
+  field('auth-submit').textContent = signup ? 'Create account' : 'Sign in';
+}
+async function loadOrders() {
+  const list = field('orders-list');
+  list.textContent = 'Loading your orders…';
+  try {
+    const result = await api('/api/orders');
+    list.textContent = '';
+    if (!result.orders.length) {
+      list.textContent = 'You have not requested an order yet.';
+      return;
+    }
+    result.orders.forEach(order => {
+      const card = document.createElement('article');
+      card.className = 'order-card';
+      const details = document.createElement('div');
+      const title = document.createElement('strong');
+      title.textContent = 'Order #' + order.id + ' · ' + order.plan;
+      const status = document.createElement('span');
+      status.className = 'order-status';
+      status.textContent = order.status === 'approved' ? 'Approved and ready' : 'Awaiting approval';
+      const email = document.createElement('span');
+      email.className = 'fine';
+      email.textContent = order.status === 'approved' ? 'Delivery email: ' + order.delivery_email_status : 'You will be emailed after approval.';
+      details.append(title, status, email);
+      card.append(details);
+      if (order.download_ready) {
+        const download = document.createElement('a');
+        download.className = 'btn';
+        download.href = '/api/order/' + order.id + '/download';
+        download.textContent = 'Download AVARA';
+        card.append(download);
+      } else if (order.status === 'approved') {
+        const unavailable = document.createElement('span');
+        unavailable.className = 'fine';
+        unavailable.textContent = 'Release file temporarily unavailable';
+        card.append(unavailable);
+      }
+      list.append(card);
+    });
+  } catch (error) {
+    list.textContent = error.message;
+  }
+}
+function showSession(name) {
+  field('account-panel').hidden = Boolean(name);
+  field('order-form').hidden = !name;
+  field('customer-orders').hidden = !name;
+  field('signed-in').hidden = !name;
+  field('signed-in').textContent = name ? 'Signed in as ' + name : '';
+  field('password').value = '';
+  field('confirm').value = '';
+  if (name) loadOrders();
+}
+field('refresh-orders').onclick = loadOrders;
+field('signup-tab').onclick = () => { authMode(true); notice(''); };
+field('login-tab').onclick = () => { authMode(false); notice(''); };
+field('account-form').onsubmit = async event => {
+  event.preventDefault();
+  const button = field('auth-submit');
+  if (button.disabled) return;
+  const data = {email: field('email').value, password: field('password').value};
+  const creating = signup;
+  if (creating) {
+    if (data.password !== field('confirm').value) return notice('Passwords do not match.');
+    data.name = field('name').value;
+  }
+  button.disabled = field('signup-tab').disabled = field('login-tab').disabled = true;
+  notice(creating ? 'Creating account…' : 'Signing in…');
+  try {
+    const result = await api(creating ? '/api/account' : '/api/login', data);
+    if (creating) authMode(false);
+    showSession(result.name);
+    notice(creating ? result.message : '');
+  } catch (error) {
+    if (creating && error.status === 409) authMode(false);
+    notice(error.message);
+  } finally {
+    button.disabled = field('signup-tab').disabled = field('login-tab').disabled = false;
+  }
+};
+async function reportOrder(result) {
+  const messages = {
+    pending: 'Checking the owner email notification…',
+    accepted: 'The email provider accepted the owner notification.',
+    failed: 'The email provider rejected the notification.',
+    disabled: 'The owner email notification is unavailable.',
+    unconfirmed: 'The owner email notification could not be confirmed.',
+  };
+  let status = result.notification;
+  notice([result.message, messages[status]].filter(Boolean).join(' '));
+  const deadline = Date.now() + 20000;
+  while (status === 'pending' && Date.now() < deadline) {
+    await new Promise(resolve => setTimeout(resolve, 1200));
+    try {
+      status = (await api('/api/order/' + result.order_id + '/notification')).status;
+    } catch {
+      status = 'unconfirmed';
+    }
+  }
+  if (status) notice(result.message + ' ' + (status === 'pending' ? messages.unconfirmed : messages[status]));
+}
+field('order-form').onsubmit = async event => {
+  event.preventDefault();
+  const button = field('order-submit');
+  if (button.disabled) return;
+  button.disabled = true;
+  notice('Saving your cash order…');
+  try {
+    const result = await api('/api/order', {plan: field('plan').value, addon: field('addon').value, accepted: field('accept').checked});
+    field('accept').checked = false;
+    await reportOrder(result);
+    await loadOrders();
+  } catch (error) {
+    if (error.status === 401) showSession(null);
+    notice(error.status ? error.message : 'Could not confirm the order. Check with AVARA before submitting again.');
+  } finally {
+    button.disabled = false;
+  }
+};
+if (location.protocol !== 'file:') {
+  api('/api/session').then(result => {
+    if (!field('auth-submit').disabled) showSession(result.name);
+  }).catch(() => {});
+}
 </script>
-</body></html>
+<script src="/reward.js?v=1" defer></script></body></html>
