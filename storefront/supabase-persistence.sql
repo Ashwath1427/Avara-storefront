@@ -28,6 +28,7 @@ create table if not exists avara_store.orders (
     platform text not null default 'windows' check(platform in ('windows','mac'))
 );
 alter table avara_store.orders add column if not exists platform text not null default 'windows';
+alter table avara_store.orders add column if not exists deleted_at bigint;
 create index if not exists avara_orders_customer_idx on avara_store.orders(user_id, id);
 create table if not exists avara_store.order_email (
     order_id bigint primary key references avara_store.orders(id),

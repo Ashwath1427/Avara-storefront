@@ -33,7 +33,13 @@ class InstallerDeliveryTests(unittest.TestCase):
                         self.assertEqual(Path(response.path).read_bytes(), files[platform].read_bytes())
                         self.assertEqual(response.filename, server.INSTALLER_FILES[platform][0])
                         self.assertEqual(response.media_type, server.INSTALLER_FILES[platform][1])
-                for number, kwargs, status in [(2, {}, 400), (1, {"platform": "mac"}, 403)]:
+                chooser = server.download_order(2, request)
+                self.assertEqual(chooser.status_code, 200)
+                self.assertEqual(chooser.media_type, 'text/html')
+                self.assertIn(b'architecture=arm64', chooser.body)
+                self.assertIn(b'architecture=x86_64', chooser.body)
+                self.assertEqual(chooser.headers['cache-control'], 'no-store')
+                for number, kwargs, status in [(2, {'architecture': 'invalid'}, 400), (1, {"platform": "mac"}, 403)]:
                     with self.assertRaises(HTTPException) as error:
                         server.download_order(number, request, **kwargs)
                     self.assertEqual(error.exception.status_code, status)

@@ -34,7 +34,10 @@ function renderOrder(order){
   const status=document.createElement('div');status.className=order.status==='approved'?'success':'status';status.textContent='Status: '+order.status+' · Customer email: '+order.delivery_email_status;
   info.append(title,customer,addon,status);card.append(info);
   const action=document.createElement('div');
-  if(order.activation_expires){
+  if(order.deleted_at){
+    status.textContent='Deleted · Hidden from customer orders; downloads and activation blocked';
+    status.className='status';
+  }else if(order.activation_expires){
     const expiry=new Date(order.activation_expires*1000);
     action.className='subscription';
     const state=document.createElement('div');state.className='subscription-state';
@@ -85,7 +88,15 @@ function renderOrder(order){
     button.onclick=()=>approve(order.id,button);action.append(button);
     if(!order.bundle_ready){const missing=document.createElement('div');missing.className='missing';missing.textContent='Release file is missing';action.append(missing);}
   }
-  card.append(action);return card;
+  const deletion=document.createElement('button');deletion.className='btn '+(order.deleted_at?'secondary':'danger');deletion.type='button';deletion.textContent=order.deleted_at?'Restore order':'Delete order';deletion.style.marginTop='14px';
+  deletion.onclick=async()=>{
+    const operation=order.deleted_at?'restore':'delete';
+    if(!order.deleted_at&&!confirm('Delete order #'+order.id+'? It will disappear from customer orders and stop downloads and activation. You can restore it later.'))return;
+    deletion.disabled=true;
+    try{const result=await ownerApi('/api/admin/order/'+order.id+'/'+operation,'POST');await loadOrders();notice.textContent=result.message;}
+    catch(error){notice.textContent=error.message;deletion.disabled=false;}
+  };
+  action.append(deletion);card.append(action);return card;
 }
 function controlButton(label,action,id,style){
   const button=document.createElement('button');button.className='btn '+style;button.type='button';button.textContent=label;
@@ -99,10 +110,11 @@ async function subscriptionChange(id,action,button,plan){
 }
 async function loadOrders(){
   loadButton.disabled=true;notice.textContent='Loading orders…';orders.textContent='';
-  try{const result=await ownerApi('/api/admin/orders');result.orders.forEach(order=>orders.append(renderOrder(order)));if(!result.orders.length)orders.textContent='No orders yet.';notice.textContent='';}
+  try{const result=await ownerApi('/api/admin/orders?include_deleted='+showDeleted.checked);result.orders.forEach(order=>orders.append(renderOrder(order)));if(!result.orders.length)orders.textContent='No orders yet.';notice.textContent='';}
   catch(error){notice.textContent=error.message;}
   finally{loadButton.disabled=false;}
 }
+const deletedLabel=document.createElement('label'),showDeleted=document.createElement('input');showDeleted.type='checkbox';showDeleted.style.cssText='display:inline-block;width:auto;margin:0 8px 0 0';deletedLabel.append(showDeleted,document.createTextNode('Show deleted orders'));notice.before(deletedLabel);showDeleted.onchange=()=>loadOrders();
 async function approve(id,button){
   if(!confirm('Approve order #'+id+' and email the customer?'))return;
   button.disabled=true;notice.textContent='Approving order and preparing the customer email…';
