@@ -135,15 +135,31 @@ class DeliveryTests(unittest.TestCase):
             with patch.object(server, 'session', lambda request: (1, 'Buyer', 'buyer@example.com')):
                 with self.assertRaises(HTTPException):
                     server.download_order(1, self.customer_request(), platform='mac')
+
                 with server.db() as con:
-                    con.execute("UPDATE orders SET status='approved' WHERE id=1")
-                self.assertTrue(server.customer_orders(self.customer_request())['orders'][0]['mac_download_ready'])
+                    con.execute("UPDATE orders SET status='approved',platform='mac' WHERE id=1")
+                listing = server.customer_orders(self.customer_request())['orders'][0]
+                self.assertEqual(listing['platform'], 'mac')
+                self.assertTrue(listing['download_ready'])
                 self.assertEqual(Path(server.download_order(1, self.customer_request(), platform='mac').path), mac_bundle)
+                self.assertEqual(Path(server.download_order(1, self.customer_request()).path), mac_bundle)
                 with self.assertRaises(HTTPException):
-                    server.download_order(1, self.customer_request(), platform='linux')
+                    server.download_order(1, self.customer_request(), platform='windows')
             with patch.object(server, 'session', lambda request: (2, 'Other', 'other@example.com')):
                 with self.assertRaises(HTTPException):
                     server.download_order(1, self.customer_request(), platform='mac')
+
+    def test_new_order_saves_os_and_owner_checks_correct_zip(self):
+        request = SimpleNamespace(client=SimpleNamespace(host='127.0.0.1'))
+        with patch.object(server, 'session', lambda request: (1, 'Buyer', 'buyer@example.com')):
+            with patch.dict('os.environ', {'AVARA_STORE_TEST_MODE': '1'}):
+                server.order(server.Order(plan='Basic — ₹150/month', addon='None', accepted=True, platform='mac'), request, BackgroundTasks())
+        with server.db() as con:
+            order_id, platform = con.execute('SELECT id,platform FROM orders ORDER BY id DESC LIMIT 1').fetchone()
+        self.assertEqual(platform, 'mac')
+        with patch.object(server, 'plan_bundle_ready', return_value=False), self.assertRaises(HTTPException) as error:
+            server.approve_order(order_id, self.owner_request(), BackgroundTasks())
+        self.assertIn('avara-basic-mac.zip', error.exception.detail)
 
     def test_ready_email_targets_customer_and_contains_signin_and_guide_links(self):
         captured = {}

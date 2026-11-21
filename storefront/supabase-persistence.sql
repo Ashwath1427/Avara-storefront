@@ -24,8 +24,10 @@ create table if not exists avara_store.orders (
     created bigint not null,
     status text not null default 'pending',
     approved_at bigint,
-    delivery_email_status text not null default 'not_sent'
+    delivery_email_status text not null default 'not_sent',
+    platform text not null default 'windows' check(platform in ('windows','mac'))
 );
+alter table avara_store.orders add column if not exists platform text not null default 'windows';
 create index if not exists avara_orders_customer_idx on avara_store.orders(user_id, id);
 create table if not exists avara_store.order_email (
     order_id bigint primary key references avara_store.orders(id),

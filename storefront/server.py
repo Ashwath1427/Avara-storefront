@@ -55,6 +55,7 @@ def check_postgres_schema():
         for table in ('users', 'sessions', 'orders', 'order_email', 'installations',
                       'reward_locks', 'reward_claims', 'reward_attempts'):
             con.execute(f'SELECT 1 FROM {table} LIMIT 0')
+        con.execute("ALTER TABLE orders ADD COLUMN IF NOT EXISTS platform TEXT NOT NULL DEFAULT 'windows'")
 
 
 @asynccontextmanager
@@ -126,6 +127,8 @@ def db():
         con.execute('ALTER TABLE orders ADD COLUMN approved_at INTEGER')
     if 'delivery_email_status' not in columns:
         con.execute("ALTER TABLE orders ADD COLUMN delivery_email_status TEXT NOT NULL DEFAULT 'not_sent'")
+    if 'platform' not in columns:
+        con.execute("ALTER TABLE orders ADD COLUMN platform TEXT NOT NULL DEFAULT 'windows'")
     return con
 
 class Credentials(BaseModel):
@@ -139,6 +142,7 @@ class Order(BaseModel):
     plan: str
     addon: str
     accepted: bool
+    platform: str = Field(default='windows', pattern=r'^(windows|mac)$')
 
 def session(request: Request):
     token = request.cookies.get('avara_store_session', '')
@@ -364,27 +368,29 @@ def customer_orders(request: Request):
     user_id, _, _ = session(request)
     with db() as con:
         rows = con.execute(
-            'SELECT id,plan,addon,created,status,approved_at,delivery_email_status FROM orders WHERE user_id=? ORDER BY id DESC',
+            'SELECT id,plan,addon,created,status,approved_at,delivery_email_status,platform FROM orders WHERE user_id=? ORDER BY id DESC',
             (user_id,),
         ).fetchall()
     return {'orders': [
         {'id': row[0], 'plan': row[1], 'addon': row[2], 'created': row[3], 'status': row[4],
          'approved_at': row[5], 'delivery_email_status': row[6],
-         'download_ready': row[4] == 'approved' and plan_bundle_ready(row[1]),
-         'mac_download_ready': row[4] == 'approved' and plan_bundle_ready(row[1], 'mac')}
+         'platform': row[7], 'download_ready': row[4] == 'approved' and plan_bundle_ready(row[1], row[7])}
         for row in rows
     ]}
 
 
 @app.get('/api/order/{order_id}/download')
-def download_order(order_id: int, request: Request, platform: str = 'windows'):
+def download_order(order_id: int, request: Request, platform: str | None = None):
     user_id, _, _ = session(request)
     with db() as con:
-        row = con.execute('SELECT plan,status FROM orders WHERE id=? AND user_id=?', (order_id, user_id)).fetchone()
+        row = con.execute('SELECT plan,status,platform FROM orders WHERE id=? AND user_id=?', (order_id, user_id)).fetchone()
     if not row:
         raise HTTPException(404, 'Order not found.')
     if row[1] != 'approved':
         raise HTTPException(403, 'This order is not ready for download yet.')
+    if platform is not None and platform != row[2]:
+        raise HTTPException(403, 'This order is for a different operating system.')
+    platform = row[2]
     plan = row[0]
     bundle = plan_bundle(plan, platform)
     if bundle.is_file():
@@ -513,11 +519,11 @@ def _sync_supabase_account(email: str, display_name: str):
     except (OSError, ValueError) as exc:
         logger.warning('Supabase storefront account sync failed (%s)', type(exc).__name__)
 
-def _send_order_email(order_id, name, email, plan, addon, transport):
+def _send_order_email(order_id, name, email, plan, addon, transport, platform='windows'):
     msg = EmailMessage()
     msg['To'] = 'kasula.ashwath3180076@gmail.com'
     msg['Subject'] = f'AVARA cash order #{order_id}'
-    msg.set_content(f'Order #{order_id}\nCustomer: {name}\nEmail: {email}\nPlan: {plan}\nAdd-on: {addon}\nPayment: cash\nTerms: draft-1 accepted')
+    msg.set_content(f'Order #{order_id}\nCustomer: {name}\nEmail: {email}\nPlan: {plan}\nOperating system: {platform.title()}\nAdd-on: {addon}\nPayment: cash\nTerms: draft-1 accepted')
     if transport == 'resend':
         payload = {'from': os.getenv('AVARA_STORE_EMAIL_FROM', 'AVARA Orders <onboarding@resend.dev>'),
                    'to': [str(msg['To'])], 'subject': str(msg['Subject']), 'text': msg.get_content()}
@@ -538,10 +544,10 @@ def _send_order_email(order_id, name, email, plan, addon, transport):
         smtp.login(str(msg['From']), ''.join(os.environ['AVARA_STORE_SMTP_PASSWORD'].split()))
         smtp.send_message(msg)
 
-def _deliver_order_email(order_id, name, email, plan, addon, transport):
+def _deliver_order_email(order_id, name, email, plan, addon, transport, platform='windows'):
     status = 'unconfirmed'
     try:
-        _send_order_email(order_id, name, email, plan, addon, transport)
+        _send_order_email(order_id, name, email, plan, addon, transport, platform)
         status = 'accepted'
     except HTTPError as exc:
         status = 'failed' if 400 <= exc.code < 500 else 'unconfirmed'
@@ -646,14 +652,14 @@ def admin_orders(request: Request):
         rows = con.execute(
             '''SELECT orders.id,users.name,users.email,orders.plan,orders.addon,orders.created,
                       orders.status,orders.approved_at,orders.delivery_email_status,installations.expires,
-                      installations.plan,installations.state,installations.paused_at
+                      installations.plan,installations.state,installations.paused_at,orders.platform
                FROM orders JOIN users ON users.id=orders.user_id
                LEFT JOIN installations ON installations.order_id=orders.id ORDER BY orders.id DESC'''
         ).fetchall()
     return {'orders': [
         {'id': row[0], 'name': row[1], 'email': row[2], 'plan': row[3], 'addon': row[4],
          'created': row[5], 'status': row[6], 'approved_at': row[7], 'delivery_email_status': row[8],
-         'bundle_ready': plan_bundle_ready(row[3]), 'activation_expires': row[9],
+         'platform': row[13], 'bundle_ready': plan_bundle_ready(row[3], row[13]), 'activation_expires': row[9],
          'activation_plan': row[10], 'activation_state': row[11], 'activation_paused_at': row[12]}
         for row in rows
     ]}
@@ -667,16 +673,16 @@ def approve_order(order_id: int, request: Request, background_tasks: BackgroundT
         raise HTTPException(503, 'Customer email delivery is not configured.')
     with db() as con:
         row = con.execute(
-            'SELECT orders.plan,orders.status,users.name,users.email FROM orders JOIN users ON users.id=orders.user_id WHERE orders.id=?',
+            'SELECT orders.plan,orders.status,users.name,users.email,orders.platform FROM orders JOIN users ON users.id=orders.user_id WHERE orders.id=?',
             (order_id,),
         ).fetchone()
         if not row:
             raise HTTPException(404, 'Order not found.')
-        plan, status, name, email = row
+        plan, status, name, email, platform = row
         if status == 'approved':
             return {'message': f'Order #{order_id} is already approved.', 'status': status}
-        if not plan_bundle_ready(plan):
-            raise HTTPException(409, f'Upload {plan_filename(plan)} before approving this order.')
+        if not plan_bundle_ready(plan, platform):
+            raise HTTPException(409, f'Upload {plan_filename(plan, platform)} before approving this order.')
         approved_at = int(time.time())
         updated = con.execute(
             "UPDATE orders SET status='approved',approved_at=?,delivery_email_status='pending' WHERE id=? AND status='pending'",
@@ -702,15 +708,15 @@ def order(data: Order, request: Request, background_tasks: BackgroundTasks):
     status = 'pending' if transport else 'disabled'
     with db() as con:
         order_id = con.execute(
-            'INSERT INTO orders(user_id,plan,addon,terms_version,created) VALUES(?,?,?,?,?) RETURNING id',
-            (user_id, data.plan, data.addon, 'draft-1', int(time.time())),
+            'INSERT INTO orders(user_id,plan,addon,terms_version,created,platform) VALUES(?,?,?,?,?,?) RETURNING id',
+            (user_id, data.plan, data.addon, 'draft-1', int(time.time()), data.platform),
         ).fetchone()[0]
         con.execute('INSERT INTO order_email VALUES(?,?,?)', (order_id, status, int(time.time())))
     if test_mode:
         return {'message': f'Test order #{order_id} saved locally. No email was sent and no payment was collected.'}
     background_tasks.add_task(_save_supabase_order, order_id, user_id, name, email, data.plan, data.addon)
     if transport:
-        background_tasks.add_task(_deliver_order_email, order_id, name, email, data.plan, data.addon, transport)
+        background_tasks.add_task(_deliver_order_email, order_id, name, email, data.plan, data.addon, transport, data.platform)
     else:
         logger.warning('Order %s saved without a configured email sender', order_id)
     return {'message': f'Cash order #{order_id} saved.', 'order_id': order_id, 'notification': status}

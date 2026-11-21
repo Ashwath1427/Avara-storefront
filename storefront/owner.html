@@ -30,7 +30,7 @@ function renderOrder(order){
   const info=document.createElement('div');
   const title=document.createElement('h2');title.textContent='Order #'+order.id+' · '+order.plan;
   const customer=document.createElement('div');customer.className='meta';customer.textContent=order.name+' · '+order.email;
-  const addon=document.createElement('div');addon.className='meta';addon.textContent='Add-on: '+order.addon;
+  const addon=document.createElement('div');addon.className='meta';addon.textContent='Operating system: '+(order.platform==='mac'?'Mac':'Windows')+' · Add-on: '+order.addon;
   const status=document.createElement('div');status.className=order.status==='approved'?'success':'status';status.textContent='Status: '+order.status+' · Customer email: '+order.delivery_email_status;
   info.append(title,customer,addon,status);card.append(info);
   const action=document.createElement('div');

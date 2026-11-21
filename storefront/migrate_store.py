@@ -10,7 +10,7 @@ import server
 TABLES = {
     'users': ('id', 'name', 'email', 'salt', 'password'),
     'sessions': ('token_hash', 'user_id', 'expires'),
-    'orders': ('id', 'user_id', 'plan', 'addon', 'terms_version', 'created', 'status', 'approved_at', 'delivery_email_status'),
+    'orders': ('id', 'user_id', 'plan', 'addon', 'terms_version', 'created', 'status', 'approved_at', 'delivery_email_status', 'platform'),
     'order_email': ('order_id', 'status', 'created'),
     'installations': ('code', 'order_id', 'plan', 'expires'),
     'reward_locks': ('id', 'pin_hash', 'clues', 'consumed'),
@@ -18,7 +18,7 @@ TABLES = {
     'reward_attempts': ('user_id', 'created'),
 }
 OPTIONAL = set(TABLES) - {'users', 'orders'}
-ORDER_DEFAULTS = {'status': "'pending'", 'approved_at': 'NULL', 'delivery_email_status': "'not_sent'"}
+ORDER_DEFAULTS = {'status': "'pending'", 'approved_at': 'NULL', 'delivery_email_status': "'not_sent'", 'platform': "'windows'"}
 
 
 def migrate(snapshot):

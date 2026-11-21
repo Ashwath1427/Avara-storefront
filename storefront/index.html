@@ -192,7 +192,7 @@
       </form>
     </div>
     <p id="signed-in" hidden></p>
-    <form id="order-form" hidden><div class="formgrid"><label>Plan<select id="plan" required><option value="">Select a plan</option><option>Basic — ₹150/month</option><option>Pro — ₹200/month</option><option>6-Month Basic — ₹1,000/6 months</option><option>6-Month Pro — ₹1,400/6 months</option></select></label><label>Optional add-on<select id="addon"><option>None</option><option>Setup assistance — discuss availability</option></select></label></div>
+    <form id="order-form" hidden><div class="formgrid"><label>Plan<select id="plan" required><option value="">Select a plan</option><option>Basic — ₹150/month</option><option>Pro — ₹200/month</option><option>6-Month Basic — ₹1,000/6 months</option><option>6-Month Pro — ₹1,400/6 months</option></select></label><label>Operating system<select id="platform" required><option value="">Select Windows or Mac</option><option value="windows">Windows</option><option value="mac">Mac — in testing</option></select></label><label>Optional add-on<select id="addon"><option>None</option><option>Setup assistance — discuss availability</option></select></label></div><p class="fine">Choose the computer this order is for. The Mac edition is still being tested.</p>
       <label class="terms"><input id="accept" type="checkbox" required> I accept the <a href="terms.html" target="_blank" rel="noopener">Terms and Conditions</a> and <a href="privacy.html" target="_blank" rel="noopener">Privacy Notice</a>.</label>
       <p class="fine">Payment method: cash. Payment and delivery arrangements are confirmed separately.</p>
       <button class="btn" id="order-submit" type="submit">Request cash order</button>
@@ -251,7 +251,7 @@ async function loadOrders() {
       card.className = 'order-card';
       const details = document.createElement('div');
       const title = document.createElement('strong');
-      title.textContent = 'Order #' + order.id + ' · ' + order.plan;
+      title.textContent = 'Order #' + order.id + ' · ' + order.plan + ' · ' + (order.platform === 'mac' ? 'Mac' : 'Windows');
       const status = document.createElement('span');
       status.className = 'order-status';
       status.textContent = order.status === 'approved' ? 'Approved and ready' : 'Awaiting approval';
@@ -264,20 +264,13 @@ async function loadOrders() {
         const download = document.createElement('a');
         download.className = 'btn';
         download.href = '/api/order/' + order.id + '/download';
-        download.textContent = 'Download AVARA for Windows';
+        download.textContent = 'Download AVARA for ' + (order.platform === 'mac' ? 'Mac' : 'Windows');
         card.append(download);
       } else if (order.status === 'approved') {
         const unavailable = document.createElement('span');
         unavailable.className = 'fine';
         unavailable.textContent = 'Release file temporarily unavailable';
         card.append(unavailable);
-      }
-      if (order.mac_download_ready) {
-        const download = document.createElement('a');
-        download.className = 'btn';
-        download.href = '/api/order/' + order.id + '/download?platform=mac';
-        download.textContent = 'Download AVARA for Mac';
-        card.append(download);
       }
       list.append(card);
     });
@@ -350,7 +343,7 @@ field('order-form').onsubmit = async event => {
   button.disabled = true;
   notice('Saving your cash order…');
   try {
-    const result = await api('/api/order', {plan: field('plan').value, addon: field('addon').value, accepted: field('accept').checked});
+    const result = await api('/api/order', {plan: field('plan').value, platform: field('platform').value, addon: field('addon').value, accepted: field('accept').checked});
     field('accept').checked = false;
     await reportOrder(result);
     await loadOrders();
