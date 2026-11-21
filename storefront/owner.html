@@ -10,7 +10,7 @@
   </style>
 </head>
 <body><main class="wrap"><div class="eyebrow">PRIVATE OWNER CONTROL</div><h1>AVARA order approvals</h1><p class="meta">Enter the private owner key configured in Render. Never share this key or place it in public source code.</p>
-  <section class="panel"><div class="login"><label>Owner key<input id="owner-key" type="password" autocomplete="current-password" minlength="24"></label><button class="btn" id="load" type="button">Open orders</button></div><div class="notice" id="notice" role="status"></div><div class="orders" id="orders"></div></section>
+  <section class="panel"><div class="login"><label>Owner key<input id="owner-key" type="password" autocomplete="current-password" minlength="24"></label><button class="btn" id="load" type="button">Open orders</button><button class="btn secondary" id="load-reviews" type="button">Open reviews</button></div><div class="notice" id="notice" role="status"></div><div class="orders" id="orders"></div></section>
 </main><script>
 const keyInput=document.getElementById('owner-key'),notice=document.getElementById('notice'),orders=document.getElementById('orders'),loadButton=document.getElementById('load');
 keyInput.value=sessionStorage.getItem('avara-owner-key')||'';
@@ -110,4 +110,5 @@ async function approve(id,button){
   catch(error){notice.textContent=error.message;button.disabled=false;}
 }
 loadButton.onclick=loadOrders;keyInput.onkeydown=event=>{if(event.key==='Enter')loadOrders();};
+document.getElementById('load-reviews').onclick=async()=>{orders.textContent='';notice.textContent='Loading reviews…';try{const result=await ownerApi('/api/admin/reviews');notice.textContent='';if(!result.reviews.length){orders.textContent='No submitted reviews yet.';return;}for(const review of result.reviews){const card=document.createElement('article');card.className='order';const info=document.createElement('div'),name=document.createElement('h2'),body=document.createElement('p'),state=document.createElement('div');name.textContent=review.name;body.textContent=review.body;body.style.whiteSpace='pre-wrap';body.style.overflowWrap='anywhere';state.className='meta';state.textContent='Status: '+review.status;info.append(name,body,state);const actions=document.createElement('div');for(const [label,status] of [['Approve','approved'],['Hide','rejected']]){const button=document.createElement('button');button.type='button';button.className='btn secondary';button.textContent=label;button.onclick=async()=>{button.disabled=true;try{await ownerApi('/api/admin/review/'+review.id,'POST',{status});state.textContent='Status: '+status;notice.textContent='Review '+status+'.';}catch(error){notice.textContent=error.message;}finally{button.disabled=false;}};actions.append(button);}card.append(info,actions);orders.append(card);}}catch(error){notice.textContent=error.message;}};
 </script></body></html>

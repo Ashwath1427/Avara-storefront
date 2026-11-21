@@ -89,10 +89,11 @@ class DeliveryTests(unittest.TestCase):
         server.change_subscription(1, server.SubscriptionChange(action='resume'), owner)
         active = server.check_installation(server.InstallationCheck(token=token), Response())
         self.assertEqual((active['status'], active['plan']), ('active', 'pro'))
+        started = int(__import__('time').time())
         server.change_subscription(1, server.SubscriptionChange(action='change_plan', plan='six_month_plus'), owner)
         listing = server.admin_orders(owner)['orders'][0]
         self.assertTrue(listing['plan'].startswith('AVARA 6-Month Plus'))
-        self.assertGreaterEqual(listing['activation_expires'], int(__import__('time').time()) + 180 * 86400)
+        self.assertGreaterEqual(listing['activation_expires'], started + 180 * 86400)
         before = active['expires']
         server.change_subscription(1, server.SubscriptionChange(action='renew'), owner)
         self.assertGreater(
@@ -117,6 +118,21 @@ class DeliveryTests(unittest.TestCase):
         with server.db() as con:
             row = con.execute('SELECT status,delivery_email_status FROM orders WHERE id=1').fetchone()
         self.assertEqual(row, ('approved', 'pending'))
+
+    def test_reviews_require_sign_in_and_owner_approval(self):
+        with patch.object(server, 'session', lambda request: (1, 'Buyer', 'buyer@example.com')):
+            server.submit_review(server.ReviewSubmission(body='A helpful assistant for daily planning.'), self.customer_request())
+            self.assertEqual(server.public_reviews()['reviews'], [])
+            pending = server.admin_reviews(self.owner_request())['reviews'][0]
+            self.assertEqual(pending['status'], 'pending')
+            with self.assertRaises(HTTPException):
+                server.submit_review(server.ReviewSubmission(body='Another review submitted too soon.'), self.customer_request())
+            server.moderate_review(pending['id'], server.ReviewModeration(status='approved'), self.owner_request())
+            self.assertEqual(server.public_reviews()['reviews'][0]['body'], 'A helpful assistant for daily planning.')
+            server.moderate_review(pending['id'], server.ReviewModeration(status='rejected'), self.owner_request())
+            self.assertEqual(server.public_reviews()['reviews'], [])
+        with self.assertRaises(HTTPException):
+            server.admin_reviews(self.owner_request('wrong-key-that-is-still-long-enough'))
 
     def test_customer_sees_only_owned_approved_download(self):
         with patch.object(server, 'session', lambda request: (1, 'Buyer', 'buyer@example.com')):
