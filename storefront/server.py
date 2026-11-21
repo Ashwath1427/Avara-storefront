@@ -305,7 +305,10 @@ def change_subscription(order_id: int, data: SubscriptionChange, request: Reques
     return {'message': message}
 
 
-INSTALLER_VERSION = "1.0.1"
+PART_MANIFEST_PATH = ROOT / "installer-parts.json"
+PART_RELEASE = json.loads(PART_MANIFEST_PATH.read_text()) if PART_MANIFEST_PATH.is_file() else {}
+INSTALLER_VERSION = PART_RELEASE.get("version", "1.0.1")
+_release_ready_cache = {}
 INSTALLER_FILES = {
     "windows": (f"AVARA-{INSTALLER_VERSION}-windows-setup.exe", "application/vnd.microsoft.portable-executable"),
     "mac-arm64": (f"AVARA-{INSTALLER_VERSION}-mac-arm64.dmg", "application/x-apple-diskimage"),
@@ -314,7 +317,7 @@ INSTALLER_FILES = {
 
 
 def installer_downloads():
-    return os.getenv("AVARA_INSTALLER_DOWNLOADS") == "true"
+    return os.getenv("AVARA_INSTALLER_DOWNLOADS", str(PART_RELEASE.get("enabled", False)).lower()) == "true"
 
 
 def plan_filename(plan: str, platform: str = 'windows'):
@@ -336,7 +339,7 @@ def plan_bundle(plan: str, platform: str = 'windows'):
     return Path(configured) if configured else ROOT / 'deliverables' / plan_filename(plan, platform)
 
 
-def storage_request(plan: str, method='GET', platform: str = 'windows'):
+def storage_request(plan: str, method='GET', platform: str = 'windows', object_name: str | None = None):
     url = os.getenv('SUPABASE_URL', '').strip().rstrip('/')
     key = os.getenv('SUPABASE_SERVICE_ROLE_KEY', '').strip()
     bucket = os.getenv('AVARA_RELEASE_BUCKET', 'avara-releases').strip()
@@ -345,7 +348,8 @@ def storage_request(plan: str, method='GET', platform: str = 'windows'):
     slug = plan_slug(plan)
     filename = plan_filename(plan, platform)
     suffix = '_MAC' if platform == 'mac' else ''
-    object_name = filename if installer_downloads() else os.getenv(f'AVARA_{slug.upper()}{suffix}_STORAGE_OBJECT', filename).strip()
+    if object_name is None:
+        object_name = filename if installer_downloads() else os.getenv(f'AVARA_{slug.upper()}{suffix}_STORAGE_OBJECT', filename).strip()
     if not object_name:
         return None
     headers = {'apikey': key, 'Cache-Control': 'no-store'}
@@ -359,11 +363,72 @@ def storage_request(plan: str, method='GET', platform: str = 'windows'):
     )
 
 
+def installer_parts(platform):
+    if installer_downloads() and PART_RELEASE.get("enabled"):
+        return PART_RELEASE.get("platforms", {}).get(platform)
+    return None
+
+
+def stream_installer_parts(requests, metadata, first_response):
+    response = first_response
+    complete = hashlib.sha256()
+    try:
+        for index, (request, part) in enumerate(zip(requests, metadata["parts"], strict=True)):
+            if index:
+                response = urllib.request.urlopen(request, timeout=30)
+            digest = hashlib.sha256()
+            size = 0
+            pending = None
+            try:
+                while chunk := response.read(1024 * 1024):
+                    size += len(chunk)
+                    if size > part["size"]:
+                        raise OSError("Release part exceeded its expected size")
+                    digest.update(chunk)
+                    complete.update(chunk)
+                    if pending is not None:
+                        yield pending
+                    pending = chunk
+                if size != part["size"] or digest.hexdigest() != part["sha256"]:
+                    raise OSError("Release part integrity check failed")
+                if index == len(metadata["parts"]) - 1 and complete.hexdigest() != metadata["sha256"]:
+                    raise OSError("Release integrity check failed")
+                if pending is not None:
+                    yield pending
+            finally:
+                response.close()
+                response = None
+    finally:
+        if response is not None:
+            response.close()
+
+
 def plan_bundle_ready(plan: str, platform: str = 'windows'):
     if installer_downloads() and platform == "mac":
         return all(plan_bundle_ready(plan, variant) for variant in ("mac-arm64", "mac-x86_64"))
     if plan_bundle(plan, platform).is_file():
         return True
+    metadata = installer_parts(platform)
+    if metadata:
+        cached = _release_ready_cache.get((platform, metadata["sha256"]))
+        if cached and cached[0] > time.monotonic():
+            return cached[1]
+        ready = True
+        for part in metadata["parts"]:
+            request = storage_request(plan, "HEAD", platform, object_name=part["name"])
+            if not request:
+                ready = False
+                break
+            try:
+                with urllib.request.urlopen(request, timeout=8) as response:
+                    if int(response.headers.get("Content-Length", -1)) != part["size"]:
+                        ready = False
+                        break
+            except (HTTPError, OSError, ValueError):
+                ready = False
+                break
+        _release_ready_cache[(platform, metadata["sha256"])] = (time.monotonic() + 60, ready)
+        return ready
     request = storage_request(plan, 'HEAD', platform)
     if not request:
         return False
@@ -426,6 +491,22 @@ def download_order(order_id: int, request: Request, platform: str | None = None,
     bundle = plan_bundle(plan, platform)
     if bundle.is_file():
         return FileResponse(bundle, filename=plan_filename(plan, platform), media_type=media_type, headers={'Cache-Control': 'no-store'})
+    metadata = installer_parts(platform)
+    if metadata:
+        if not plan_bundle_ready(plan, platform):
+            raise HTTPException(503, "The complete installer is temporarily unavailable.")
+        requests = [storage_request(plan, platform=platform, object_name=part["name"]) for part in metadata["parts"]]
+        try:
+            first = urllib.request.urlopen(requests[0], timeout=30)
+        except (HTTPError, OSError, ValueError):
+            raise HTTPException(503, "The installer is temporarily unavailable.")
+        return StreamingResponse(
+            stream_installer_parts(requests, metadata, first),
+            media_type=media_type,
+            headers={"Cache-Control": "no-store", "Content-Length": str(metadata["size"]),
+                     "Content-Disposition": f'attachment; filename="{metadata["filename"]}"',
+                     "ETag": '"' + metadata["sha256"] + '"'},
+        )
     storage = storage_request(plan, platform=platform)
     if not storage:
         raise HTTPException(503, 'The release file is temporarily unavailable. Contact AVARA support.')

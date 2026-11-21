@@ -46,3 +46,32 @@ class InstallerDeliveryTests(unittest.TestCase):
                 with self.assertRaises(HTTPException) as error:
                     server.download_order(1, request)
                 self.assertEqual(error.exception.status_code, 403)
+
+    def test_private_parts_reassemble_and_reject_corruption(self):
+        import hashlib
+        from io import BytesIO
+        chunks = [b"first binary part", b"second binary part"]
+        metadata = {
+            "sha256": hashlib.sha256(b"".join(chunks)).hexdigest(),
+            "parts": [{"size": len(chunk), "sha256": hashlib.sha256(chunk).hexdigest()} for chunk in chunks],
+        }
+        first = BytesIO(chunks[0])
+        second = BytesIO(chunks[1])
+        with patch.object(server.urllib.request, "urlopen", return_value=second):
+            self.assertEqual(b"".join(server.stream_installer_parts(["first", "second"], metadata, first)), b"".join(chunks))
+        self.assertTrue(first.closed)
+        self.assertTrue(second.closed)
+        with patch.object(server.urllib.request, "urlopen", return_value=BytesIO(b"corrupt")):
+            with self.assertRaises(OSError):
+                list(server.stream_installer_parts(["first", "second"], metadata, BytesIO(chunks[0])))
+
+    def test_missing_private_part_blocks_approval_readiness(self):
+        from io import BytesIO
+        metadata = {"sha256": "test-release", "parts": [{"name": "one", "size": 3}, {"name": "two", "size": 3}]}
+        first = BytesIO()
+        first.headers = {"Content-Length": "3"}
+        with patch.object(server, "installer_parts", return_value=metadata), \
+             patch.object(server, "plan_bundle", return_value=Path("missing-test-installer")), \
+             patch.object(server, "storage_request", return_value="private-object"), \
+             patch.object(server.urllib.request, "urlopen", side_effect=[first, OSError("missing")]):
+            self.assertFalse(server.plan_bundle_ready("Basic", "mac-arm64"))

@@ -47,3 +47,5 @@ Before public launch, finalize the terms and privacy notice, configure HTTPS and
 ## Native installer delivery
 
 After the three customer installers are verified in the private release bucket, set AVARA_INSTALLER_DOWNLOADS=true in Render. The version and filenames are defined together in server.py. Both Basic and Pro orders use the matching operating-system installer. Mac customers select Apple Silicon or Intel on the approved order. Old Mac orders also receive this choice. Keep this switch unset until the files are available.
+
+Private multipart installers are described in installer-parts.json. Every object must be below the bucket file-size limit. Upload all listed parts to the private avara-releases bucket. The release remains disabled while enabled is false. After upload verification, enable the manifest and deploy. Customers receive a single original EXE or DMG through the authenticated order route. Each part and the complete stream are checked against their expected sizes and SHA-256 hashes. Download approval checks all required objects. Existing Supabase storage and egress quotas apply.
