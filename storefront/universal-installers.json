@@ -1,9 +1,9 @@
 {
-  "enabled": false,
+  "enabled": true,
   "version": "1.1.0",
   "platforms": {
     "windows": {
-      "enabled": true,
+      "enabled": false,
       "version": "1.1.0",
       "filename": "AVARA-1.1.0-windows-setup.exe",
       "size": 123130735,
@@ -25,7 +25,8 @@
           "sha256": "1422c5a2f8614c53f054c1508209c8f2f97c1a59be2fcd205ab0820c92e657f3"
         }
       ],
-      "requirement": "Windows 10 or 11 (64-bit)"
+      "requirement": "Windows 10 or 11 (64-bit)",
+      "message": "The Windows download is coming soon."
     },
     "mac-arm64": {
       "enabled": true,
