@@ -430,8 +430,9 @@ def storage_request(plan: str, method='GET', platform: str = 'windows', object_n
     if not key.startswith('sb_secret_'):
         headers['Authorization'] = 'Bearer ' + key
     path = '/'.join(quote(part, safe='') for part in object_name.split('/'))
+    object_route = 'object' if method == 'POST' else 'object/authenticated'
     return urllib.request.Request(
-        f'{url}/storage/v1/object/authenticated/{quote(bucket, safe="")}/{path}',
+        f'{url}/storage/v1/{object_route}/{quote(bucket, safe="")}/{path}',
         headers=headers,
         method=method,
     )

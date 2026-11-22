@@ -37,3 +37,10 @@ class PlanReleaseCatalogTests(unittest.TestCase):
                 self.assertIn('12 plan downloads',result['message'])
                 self.assertEqual(len(json.loads(request.data)['downloads']),12)
                 self.assertEqual(request.get_header('X-upsert'),'true')
+
+    def test_upload_uses_storage_write_route(self):
+        with patch.dict('os.environ',{'SUPABASE_URL':'https://example.test','SUPABASE_SERVICE_ROLE_KEY':'sb_secret_test','AVARA_RELEASE_BUCKET':'avara-releases'}):
+            upload=server.storage_request('Basic',method='POST',object_name='release-catalog.json')
+            download=server.storage_request('Basic',object_name='release-catalog.json')
+            self.assertEqual(upload.full_url,'https://example.test/storage/v1/object/avara-releases/release-catalog.json')
+            self.assertEqual(download.full_url,'https://example.test/storage/v1/object/authenticated/avara-releases/release-catalog.json')
