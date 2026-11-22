@@ -2,13 +2,11 @@
 
 ## Download and install
 
-1. Sign in to the AVARA storefront with the account used for your order. Select Windows or Mac when ordering. Cash payment and approval are handled by the owner.
-2. After approval, open **Your orders → Download AVARA**. Mac requires Apple Silicon and macOS 14 or later. Use Apple menu → About This Mac to check.
-3. Windows receives a plan-labelled EXE, such as `AVARA-1.0.1-basic-windows-setup.exe`. Run the installer, then launch AVARA from its installed shortcut.
-4. Mac receives a plan-labelled Apple Silicon (`mac-arm64.dmg`) installer. Open it, drag AVARA to Applications, eject the disk image, and open the installed app.
-5. Send the one-time code shown in AVARA and your order number to the owner. Keep AVARA open and online while the owner activates that installation.
-
-The packaged app includes Python and its application dependencies. You do not need to install Python or Node.js separately for the EXE/DMG release. Ollama is a separate optional installation if you choose local AI. A Windows installer cannot run on macOS, and a Mac DMG cannot run on Windows.
+1. Download AVARA from the website's Download section. There is one installer per system, the same for every plan. No account or order is needed to download.
+2. Windows: run `AVARA-…-windows-setup.exe`. Mac (Apple Silicon, macOS 14 or later): open the DMG and drag AVARA to Applications.
+3. Open AVARA and choose your plan. AVARA shows a one-time code such as `AVR-7F3K-92QD`.
+4. Send the code to the AVARA owner on WhatsApp and pay by cash or UPI. Keep AVARA open and online; it unlocks itself after approval and shows your plan and expiry.
+5. The code works once, only on this computer, and expires after 48 hours unapproved. Changing the plan before approval gives a new code.
 
 ## Choose one AI option
 
@@ -22,9 +20,9 @@ Enter API keys only in AVARA's local setup/settings. Never send passwords, activ
 
 ## Approval and subscriptions
 
-Monthly Basic is ₹150 and monthly Pro is ₹200. Six-month Basic is ₹1,000 and six-month Pro is ₹1,400. Initial activation lasts 30 or 180 days according to the approved order. Both plans use the same platform installer; the approved order supplies the entitlement.
+Monthly Basic is ₹150 and monthly Pro is ₹200. Six-month Basic is ₹1,000 and six-month Pro is ₹1,400. Plans last 30 or 180 days from approval; renewing early adds to the current expiry.
 
-The first activation and periodic license checks require internet. The owner can pause, continue, renew, cancel, or change the plan. Deleted orders cannot download or activate until restored. Keep your AVARA user-data folder; reinstalling or deleting it can lose the device token and local settings.
+AVARA keeps a signed copy of its last plan check and works offline for up to 7 days (never past the plan's expiry), then needs to re-check online. The owner can pause, continue, renew, cancel, change or extend a plan. Existing customers who install the new version on the same computer and user keep their plan automatically.
 
 ## Source ZIPs only
 
@@ -36,12 +34,12 @@ Screen understanding, microphone, camera, and app control may need the correspon
 
 ## Troubleshooting and uninstall
 
-- Missing download: refresh orders and sign in to the ordering account again. An approved order is required.
+- Download not available: the release may still be uploading. Try again later or contact the owner.
 - Mac compatibility: the current release requires Apple Silicon and macOS 14 or later.
-- Activation cannot connect: confirm internet access, wait for the hosting service to wake, retry, and contact support with the order number and a redacted log if it persists.
+- Plan check cannot connect: confirm internet access and wait a minute for the service to wake. If it persists, send the owner your code and a redacted log.
 - AI offline: test your chosen provider, key, quota, or running Ollama model.
 - Startup failure: read AVARA's log under Local AppData/AVARA/logs on Windows or Library/Application Support/AVARA/logs on Mac. Share only a redacted error excerpt.
-- Unrecognized publisher warnings: verify the file came from your approved AVARA order. Stop if the source is uncertain; do not disable system protection.
+- Unrecognized publisher warnings: download AVARA only from the official website. Stop if the source is uncertain; do not disable system protection.
 - Windows packaged install: use Settings → Apps → Installed apps and the AVARA uninstaller if provided by your release. Mac: quit AVARA and remove its app from Applications. Saved user data may remain.
 - Older source ZIPs: use the included UNINSTALL_AVARA_WINDOWS.bat/UNINSTALL_AVARA.ps1 only for that installation. Do not remove shared Python, Node.js, or Ollama just to uninstall AVARA.
 

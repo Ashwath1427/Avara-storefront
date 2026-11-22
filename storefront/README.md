@@ -52,7 +52,7 @@ Required objects:
 - `AVARA-1.0.1-mac-x86_64.dmg.part04`
 - `AVARA-1.0.1-mac-x86_64.dmg.part05`
 
-The four old files `avara-basic.zip`, `avara-pro.zip`, `avara-basic-mac.zip`, `avara-pro-mac.zip` are legacy source releases, unused in native delivery mode. Their local backup is under `deliverables/legacy-source-zips/` after cleanup. They may be removed from cloud storage while native mode is enabled. One customer-facing file does not require one cloud object. To use one cloud object per installer, move to storage that permits the full 137–204 MB files, then change the delivery configuration and verify downloads before removing parts.
+The four old files `avara-basic.zip`, `avara-pro.zip`, `avara-basic-mac.zip`, `avara-pro-mac.zip` are legacy source releases, unused in native delivery mode. Their local backups were removed during cleanup. They may be removed from cloud storage while native mode is enabled. One customer-facing file does not require one cloud object. To use one cloud object per installer, move to storage that permits the full 137–204 MB files, then change the delivery configuration and verify downloads before removing parts.
 
 ## Email
 
@@ -77,3 +77,17 @@ The footer lock reward is server-backed and limited to one claim per account; ve
 Each of Basic, Pro, 6-Month Basic and 6-Month Pro has a distinct Windows EXE, Apple Silicon DMG and Intel DMG download filename: 12 names total. The authenticated route derives the filename from the approved order; the server remains the authority for features and 30/180-day duration. All plans share the three verified app engines, so storage parts are not duplicated. `release-catalog.json` in the private bucket lists all 12 plan filenames, hashes, prices, terms and underlying pieces. The owner-only Sync release catalog control verifies availability and publishes this catalog using existing server-side storage credentials.
 
 Local customer exports are generated with `python packaging/package_plan_installers.py` into `customer releases/1.0.1`, grouped into four plan folders. The script reconstructs and hashes the three original engines, exports 12 plan-labelled files and verifies every exported hash. These are labelled exports of verified 1.0.1 engines, not newly compiled app versions. Changing filenames or editing a catalog does not grant access. Keep owner builds separate.
+
+## Universal installer licensing (v2)
+
+One Windows setup and one Apple Silicon DMG for every plan. The plan is never in the installer.
+
+- `GET /api/plans`: plan catalog (prices come from `avara_store.plans`).
+- `POST /api/v2/installations/register`: the app chooses a plan. Creates a pending order and a one-time code `AVR-XXXX-XXXX` (48 h, one installation, one use). Only HMACs of codes and SHA-256 of installation secrets are stored.
+- `POST /api/v2/activation/status`: Ed25519-signed ticket (installation, plan, expiry, six-month flag, issued-at). The app verifies it with the public key it ships and works offline until the ticket expires.
+- Owner (`/owner`, session cookie + CSRF token, every action audit-logged): `/api/owner/login`, `/api/owner/license-orders` (+ `/approve`, `/{id}/reject`), `/api/owner/entitlements/{id}` (pause, resume, cancel, change_plan, extend), `/api/owner/audit`.
+- `GET /api/downloads`, `GET /download/windows|mac`: public universal downloads, closed until `universal-installers.json` is enabled or `AVARA_PUBLIC_DOWNLOADS=true`.
+- Old copies keep using `POST /api/activation/check`; old website orders keep their downloads.
+
+Schema changes ship only as SQL migrations in `migrations/` (run in order in the Supabase SQL editor before deploying). Required new Render variables: `AVARA_TICKET_SIGNING_KEY`, `AVARA_CODE_PEPPER`. See `.env.example`. Approvals go through one function, `grant_license_order()`, so a payment provider can approve codes later without changing the code or ticket system.
+

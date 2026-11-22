@@ -4,131 +4,370 @@
   <meta charset="utf-8">
   <meta name="viewport" content="width=device-width,initial-scale=1">
   <meta name="robots" content="noindex,nofollow">
-  <title>AVARA Owner — Order approvals</title>
+  <meta name="referrer" content="no-referrer">
+  <title>AVARA Owner</title>
+  <link rel="preconnect" href="https://fonts.googleapis.com">
+  <link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=DM+Mono:wght@400;500&family=Manrope:wght@400;500;600;700;800&display=swap">
   <style>
-    :root{color-scheme:dark;--bg:#070b12;--panel:#0c1421;--line:#1b3447;--cyan:#54eaff;--text:#edf5ff;--muted:#9aacc2}*{box-sizing:border-box}body{margin:0;background:radial-gradient(ellipse at 70% 0%,#10283a 0,transparent 38%),var(--bg);color:var(--text);font:16px/1.55 Inter,Segoe UI,Arial,sans-serif}.wrap{max-width:1100px;margin:auto;padding:28px}.eyebrow{color:var(--cyan);font:700 12px monospace;letter-spacing:.25em}h1{margin:10px 0}.panel,.order{border:1px solid var(--line);border-radius:18px;background:var(--panel);padding:22px}.login{display:flex;gap:10px;align-items:end;margin:28px 0}.login label{flex:1;color:var(--muted)}input,select{display:block;width:100%;margin-top:7px;padding:13px;border:1px solid #27455d;border-radius:10px;background:#070d16;color:var(--text);font:inherit}.btn{border:0;border-radius:10px;padding:11px 16px;background:linear-gradient(110deg,#17b9d1,#7283ff);color:white;font-weight:750;cursor:pointer}.btn.secondary{background:#14263a;border:1px solid #2d506c}.btn.danger{background:#7a2733;border:1px solid #b84a5a}.btn:disabled{opacity:.55;cursor:not-allowed}.orders{display:grid;gap:12px;margin-top:18px}.order{display:grid;grid-template-columns:minmax(0,1fr) minmax(300px,auto);gap:20px;align-items:center}.order h2{font-size:18px;margin:0 0 8px}.meta{color:var(--muted);font-size:14px}.status{color:#ffd486}.success{color:#6ff3d0}.notice{min-height:25px;color:#ffd486}.missing{color:#ff8d99;font-size:13px}.subscription{min-width:320px}.subscription-state{margin-bottom:10px;text-align:right}.controls{display:flex;flex-wrap:wrap;gap:8px;justify-content:flex-end}.plan-control{display:flex;gap:8px;width:100%;justify-content:flex-end}.plan-control select{width:auto;min-width:135px;margin:0;padding:10px}@media(max-width:760px){.login,.order{display:block}.login .btn,.order>.btn{margin-top:12px;width:100%}.subscription{min-width:0;margin-top:18px}.subscription-state{text-align:left}.controls,.plan-control{justify-content:flex-start}}
+    :root{color-scheme:dark;--bg:#080b10;--panel:#11151b;--panel2:#181c23;--line:#ffffff1f;--line-strong:#ffffff33;--cyan:#8be9ff;--ink:#06131a;--text:#f5f7fa;--muted:#afb5bf;--ok:#8ff0c8;--warn:#ffd486;--bad:#ff9aa5}
+    *{box-sizing:border-box}
+    body{margin:0;background:radial-gradient(ellipse 70% 50% at 70% 0%,#171c24,transparent 70%),var(--bg);color:var(--text);font:15px/1.55 Manrope,"Segoe UI",system-ui,sans-serif;-webkit-font-smoothing:antialiased}
+    .wrap{width:min(1180px,100% - 32px);margin:auto;padding:32px 0 64px}
+    .top{display:flex;align-items:center;justify-content:space-between;gap:16px;flex-wrap:wrap}
+    .brand{display:inline-flex;align-items:center;gap:12px;color:var(--text);text-decoration:none;font-weight:800;letter-spacing:.24em}
+    .mark{display:grid;place-items:center;width:36px;height:36px;border:1.5px solid var(--cyan);border-radius:50%;color:var(--cyan);letter-spacing:0;font-size:15px}
+    .eyebrow{color:var(--cyan);font:500 12px/1.4 "DM Mono",ui-monospace,monospace;letter-spacing:.18em;text-transform:uppercase}
+    h1{margin:16px 0 4px;font-size:clamp(1.75rem,1.4rem + 1.4vw,2.5rem);letter-spacing:-.03em;line-height:1.1}h2{font-size:1.05rem;margin:0 0 6px;letter-spacing:-.01em}
+    .meta{color:var(--muted);font-size:13px}
+    .panel{border:1px solid var(--line);border-radius:18px;background:var(--panel);padding:20px;margin-top:16px}
+    input,select,textarea{padding:10px 14px;border:1px solid var(--line-strong);border-radius:10px;background:var(--bg);color:var(--text);font:inherit;min-height:44px}
+    textarea{min-height:120px;width:100%;resize:vertical}
+    input{width:100%}
+    input:focus-visible,select:focus-visible,textarea:focus-visible,button:focus-visible,a:focus-visible{outline:2px solid var(--cyan);outline-offset:2px}
+    .btn{display:inline-flex;align-items:center;justify-content:center;border:1px solid transparent;border-radius:999px;padding:0 18px;min-height:42px;background:var(--cyan);color:var(--ink);font-weight:700;cursor:pointer;font-size:14px;transition:background-color .18s,border-color .18s}
+    .btn:hover{background:#b2f1ff}
+    .btn.secondary{background:transparent;border-color:var(--line-strong);color:var(--text)}.btn.secondary:hover{border-color:var(--cyan);background:#8be9ff1f}
+    .btn.danger{background:transparent;border-color:#ff9aa566;color:var(--bad)}.btn.danger:hover{background:#ff9aa514}
+    .btn:disabled{opacity:.5;cursor:not-allowed}
+    .row{display:flex;flex-wrap:wrap;gap:8px;align-items:center}
+    .grow{flex:1;min-width:200px}
+    .tabs{display:flex;flex-wrap:wrap;gap:6px;margin-top:20px}
+    .tabs button{background:transparent;border:1px solid var(--line);color:var(--muted);border-radius:999px;padding:0 16px;min-height:40px;cursor:pointer;font:600 13px Manrope,"Segoe UI",sans-serif}
+    .tabs button[aria-selected=true]{background:var(--panel2);color:var(--text);border-color:var(--line-strong)}
+    .list{display:grid;gap:10px;margin-top:14px}
+    .item{display:grid;grid-template-columns:minmax(0,1fr) auto;gap:14px;align-items:center;border:1px solid var(--line);border-radius:14px;background:var(--panel2);padding:14px 16px}
+    .item .actions{display:flex;flex-wrap:wrap;gap:6px;justify-content:flex-end;max-width:560px}
+    .pill{display:inline-block;border-radius:999px;padding:1px 9px;font-size:12px;font-weight:700;border:1px solid currentColor;margin-left:6px}
+    .s-pending,.s-not_configured{color:var(--warn)}.s-approved,.s-active,.s-sent{color:var(--ok)}.s-rejected,.s-cancelled,.s-expired,.s-failed{color:var(--bad)}.s-superseded,.s-paused,.s-deleted{color:var(--muted)}
+    .code{font:500 16px "DM Mono",monospace;letter-spacing:.06em;color:var(--cyan)}
+    .who{color:var(--text);font-weight:600}
+    .notice{min-height:22px;margin-top:12px;color:var(--warn)}
+    .counts{display:flex;gap:6px;flex-wrap:wrap}
+    table{width:100%;border-collapse:collapse;font-size:13px}th,td{text-align:left;padding:8px;border-bottom:1px solid var(--line);vertical-align:top}th{color:var(--muted);font-weight:600}
+    td.detail{font-family:"DM Mono",monospace;color:var(--muted);overflow-wrap:anywhere}
+    .scroll{overflow-x:auto}
+    dialog{width:min(560px,calc(100% - 28px));border:1px solid var(--line-strong);border-radius:18px;background:var(--panel);color:var(--text);padding:22px}
+    dialog::backdrop{background:#020610cc;backdrop-filter:blur(6px)}
+    dialog form{display:grid;gap:12px}dialog label{display:grid;gap:6px;color:var(--muted);font-size:13px;font-weight:600}
+    [hidden]{display:none!important}
+    @media(max-width:760px){.item{grid-template-columns:1fr}.item .actions{justify-content:flex-start;max-width:none}}
+    @media(prefers-reduced-motion:reduce){*{transition:none!important}}
   </style>
 </head>
-<body><main class="wrap"><div class="eyebrow">PRIVATE OWNER CONTROL</div><h1>AVARA order approvals</h1><p class="meta">Enter the private owner key configured in Render. Never share this key or place it in public source code.</p>
-  <section class="panel"><div class="login"><label>Owner key<input id="owner-key" type="password" autocomplete="current-password" minlength="24"></label><button class="btn" id="load" type="button">Open orders</button><button class="btn secondary" id="load-reviews" type="button">Open reviews</button></div><div class="notice" id="notice" role="status"></div><div class="orders" id="orders"></div></section>
+<body><main class="wrap">
+  <div class="top"><a class="brand" href="/" aria-label="AVARA website"><span class="mark" aria-hidden="true">Λ</span>AVARA</a><span class="eyebrow">PRIVATE OWNER CONTROL</span></div>
+  <h1>Owner</h1>
+  <p class="meta">Every action here is recorded in the audit log.</p>
+
+  <section class="panel" id="login-panel" hidden>
+    <h2>Sign in</h2>
+    <p class="meta">Enter the private owner key configured in Render. It is sent once; afterwards a secure session cookie is used. Never share it.</p>
+    <form class="row" id="login-form"><input class="grow" id="owner-key" type="password" autocomplete="current-password" minlength="24" required placeholder="Owner key"><button class="btn" type="submit">Sign in</button></form>
+  </section>
+
+  <section id="dashboard" hidden>
+    <div class="row" style="justify-content:space-between;margin-top:12px"><span class="meta" id="who"></span><button class="btn secondary" id="logout" type="button">Sign out</button></div>
+    <nav class="tabs" role="tablist">
+      <button role="tab" data-tab="codes" aria-selected="true">Codes &amp; orders</button>
+      <button role="tab" data-tab="installs" aria-selected="false">Installations</button>
+      <button role="tab" data-tab="legacy" aria-selected="false">Website orders (old)</button>
+      <button role="tab" data-tab="reviews" aria-selected="false">Reviews</button>
+      <button role="tab" data-tab="emails" aria-selected="false">Emails</button>
+      <button role="tab" data-tab="audit" aria-selected="false">Audit log</button>
+    </nav>
+    <div class="notice" id="notice" role="status" aria-live="polite"></div>
+
+    <section class="panel" data-panel="codes">
+      <h2>Approve a payment</h2>
+      <p class="meta">Paste the code the customer sent on WhatsApp after you receive their payment.</p>
+      <form class="row" id="approve-form">
+        <input class="grow" id="approve-code" autocomplete="off" spellcheck="false" maxlength="40" placeholder="AVR-XXXX-XXXX" required>
+        <input class="grow" id="approve-ref" autocomplete="off" maxlength="120" placeholder="Payment note (optional, e.g. UPI ref)">
+        <button class="btn" type="submit">Find &amp; approve</button>
+      </form>
+      <div class="row" style="margin-top:16px">
+        <input class="grow" id="code-search" placeholder="Search by code, customer email, order # or installation id" maxlength="254">
+        <select id="code-status" aria-label="Status"><option value="pending">Waiting for approval</option><option value="all">All</option><option value="approved">Approved</option><option value="expired">Expired</option><option value="rejected">Rejected</option><option value="superseded">Replaced</option></select>
+        <button class="btn secondary" id="code-refresh" type="button">Refresh</button>
+      </div>
+      <div class="counts meta" id="code-counts" style="margin-top:10px"></div>
+      <div class="list" id="code-list"></div>
+      <p class="meta">This list refreshes every 10 seconds.</p>
+    </section>
+
+    <section class="panel" data-panel="installs" hidden>
+      <div class="row"><input class="grow" id="install-search" placeholder="Search by code, customer email, number or installation id" maxlength="254"><button class="btn secondary" id="install-refresh" type="button">Refresh</button></div>
+      <div class="list" id="install-list"></div>
+    </section>
+
+    <section class="panel" data-panel="legacy" hidden>
+      <p class="meta">Orders placed on the old website flow. New customers choose their plan inside AVARA instead. Existing activations from these orders appear under Installations, where you can pause, resume, cancel, change plan or extend them.</p>
+      <div class="row"><label class="meta"><input type="checkbox" id="show-deleted" style="width:auto;min-height:0;margin-right:6px">Show deleted orders</label><button class="btn secondary" id="legacy-refresh" type="button">Refresh</button><button class="btn secondary" id="sync-releases" type="button">Sync release catalog</button></div>
+      <div class="list" id="legacy-list"></div>
+    </section>
+
+    <section class="panel" data-panel="reviews" hidden><div class="list" id="review-list"></div></section>
+
+    <section class="panel" data-panel="emails" hidden>
+      <div class="row" style="justify-content:space-between"><p class="meta" id="email-config"></p><button class="btn secondary" id="emails-refresh" type="button">Refresh</button></div>
+      <div class="scroll"><table><thead><tr><th>Time</th><th>To</th><th>Type</th><th>Subject</th><th>Status</th></tr></thead><tbody id="email-body"></tbody></table></div>
+    </section>
+
+    <section class="panel" data-panel="audit" hidden>
+      <div class="row"><button class="btn secondary" id="audit-refresh" type="button">Refresh</button></div>
+      <div class="scroll"><table><thead><tr><th>Time</th><th>Who</th><th>Action</th><th>Target</th><th>Details</th></tr></thead><tbody id="audit-body"></tbody></table></div>
+    </section>
+  </section>
+  <dialog id="email-dialog" aria-labelledby="email-dialog-title">
+    <form method="dialog" id="email-form">
+      <h2 id="email-dialog-title">Email customer</h2>
+      <p class="meta" id="email-to"></p>
+      <label>Subject<input id="email-subject" maxlength="150" required></label>
+      <label>Message<textarea id="email-message" maxlength="5000" required></textarea></label>
+      <div class="row"><button class="btn" id="email-send" value="send" type="submit">Send email</button><button class="btn secondary" value="cancel" type="button" id="email-cancel">Cancel</button></div>
+    </form>
+  </dialog>
 </main><script>
-const keyInput=document.getElementById('owner-key'),notice=document.getElementById('notice'),orders=document.getElementById('orders'),loadButton=document.getElementById('load');
-keyInput.value=sessionStorage.getItem('avara-owner-key')||'';
-async function ownerApi(path,method='GET',body){
-  const key=keyInput.value.trim();
-  if(key.length<24)throw new Error('Enter the private owner key.');
-  const headers={Authorization:'Bearer '+key};
-  if(body) headers['Content-Type']='application/json';
-  const response=await fetch(path,{method,cache:'no-store',headers,body:body?JSON.stringify(body):undefined});
-  const data=await response.json().catch(()=>({}));
-  if(!response.ok){const error=new Error(typeof data.detail==='string'?data.detail:(data.detail?.message||'Request failed.'));error.detail=data.detail;throw error;}
-  sessionStorage.setItem('avara-owner-key',key);
+const $ = id => document.getElementById(id);
+let csrf = '', activeTab = 'codes', liveTimer = null, plans = [];
+const when = s => s ? new Date(s * 1000).toLocaleString(undefined, {dateStyle: 'medium', timeStyle: 'short'}) : '—';
+const inr = v => '₹' + Number(v || 0).toLocaleString('en-IN');
+const el = (tag, cls, text) => { const node = document.createElement(tag); if (cls) node.className = cls; if (text !== undefined) node.textContent = text; return node; };
+function notice(text) { $('notice').textContent = text || ''; }
+function pill(status) { return el('span', 'pill s-' + status, status); }
+
+async function api(path, method = 'GET', body) {
+  const headers = {};
+  if (method !== 'GET') headers['X-CSRF-Token'] = csrf;
+  if (body) headers['Content-Type'] = 'application/json';
+  const response = await fetch(path, {method, cache: 'no-store', credentials: 'same-origin', headers, body: body ? JSON.stringify(body) : undefined});
+  const data = await response.json().catch(() => ({}));
+  if (response.status === 401) { showLogin(); }
+  if (!response.ok) { const error = new Error(typeof data.detail === 'string' ? data.detail : (data.detail?.message || 'Request failed.')); error.detail = data.detail; error.status = response.status; throw error; }
   return data;
 }
-function renderOrder(order){
-  const card=document.createElement('article');card.className='order';
-  const info=document.createElement('div');
-  const title=document.createElement('h2');title.textContent='Order #'+order.id+' · '+order.plan;
-  const customer=document.createElement('div');customer.className='meta';customer.textContent=order.name+' · '+order.email;
-  const addon=document.createElement('div');addon.className='meta';addon.textContent='Operating system: '+(order.platform==='mac'?'Mac':'Windows')+' · Add-on: '+order.addon;
-  const status=document.createElement('div');status.className=order.status==='approved'?'success':'status';status.textContent='Status: '+order.status+' · Customer email: '+order.delivery_email_status;
-  info.append(title,customer,addon,status);card.append(info);
-  const action=document.createElement('div');
-  if(order.deleted_at){
-    status.textContent='Deleted · Hidden from customer orders; downloads and activation blocked';
-    status.className='status';
-  }else if(order.activation_expires){
-    const expiry=new Date(order.activation_expires*1000);
-    action.className='subscription';
-    const state=document.createElement('div');state.className='subscription-state';
-    const currentState=order.activation_state||'active';
-    state.textContent=(currentState==='active'&&expiry<=Date.now()?'Expired':currentState[0].toUpperCase()+currentState.slice(1))+' · '+(order.activation_plan||'').toUpperCase()+' · until '+expiry.toLocaleDateString();
-    state.className+=' '+(currentState==='active'&&expiry>Date.now()?'success':'status');
-    const controls=document.createElement('div');controls.className='controls';
-    if(currentState==='active') controls.append(controlButton('Pause','pause',order.id,'secondary'));
-    else controls.append(controlButton('Continue','resume',order.id,''));
-    controls.append(controlButton('Add 30 days','renew',order.id,'secondary'));
-    if(currentState!=='cancelled') controls.append(controlButton('Cancel','cancel',order.id,'danger'));
-    const planControl=document.createElement('div');planControl.className='plan-control';
-    const select=document.createElement('select');select.setAttribute('aria-label','Change activation plan');
-    const selectedPlan=order.plan.startsWith('6-Month Basic')?'six_month_basic':order.plan.startsWith('6-Month Pro')?'six_month_pro':order.plan.startsWith('AVARA 6-Month Plus')?'six_month_plus':order.activation_plan;
-    for(const [value,label] of [['basic','Basic monthly'],['pro','Pro monthly'],['six_month_basic','6-Month Basic'],['six_month_pro','6-Month Pro'],...(selectedPlan==='six_month_plus'?[['six_month_plus','Legacy 6-Month Plus']]:[])]){const option=document.createElement('option');option.value=value;option.textContent=label;option.selected=value===selectedPlan;select.append(option);}
-    const change=document.createElement('button');change.className='btn secondary';change.type='button';change.textContent='Change plan';
-    change.onclick=()=>subscriptionChange(order.id,'change_plan',change,select.value);
-    planControl.append(select,change);controls.append(planControl);action.append(state,controls);
-  }else if(order.status==='approved'){
-    const form=document.createElement('form');
-    const label=document.createElement('label');
-    label.textContent='One-time activation code';
-    const input=document.createElement('input');
-    input.required=true;
-    input.maxLength=80;
-    input.autocomplete='off';
-    input.spellcheck=false;
-    input.placeholder='Paste the customer’s AVARA code';
-    label.append(input);
-    const button=document.createElement('button');
-    button.className='btn';
-    button.textContent='Activate installation';
-    form.append(label,button);
-    form.onsubmit=async event=>{
-      event.preventDefault();
-      button.disabled=true;
-      try{
-        const result=await ownerApi('/api/admin/order/'+order.id+'/activate','POST',{code:input.value});
-        await loadOrders();
-        notice.textContent=result.message;
-      }catch(error){
-        if(error.detail?.code==='installation_already_linked'&&confirm(error.message+' This replaces the previous entitlement with '+order.plan+' for its new term.')){
-          try{const result=await ownerApi('/api/admin/order/'+order.id+'/activate','POST',{code:input.value,replace_existing:true});await loadOrders();notice.textContent=result.message;}
-          catch(updateError){notice.textContent=updateError.message;}
-        }else{notice.textContent=error.message;}
-      }
-      finally{button.disabled=false;}
+function button(label, style, handler) { const b = el('button', 'btn ' + (style || ''), label); b.type = 'button'; b.onclick = async () => { b.disabled = true; try { await handler(); } catch (error) { notice(error.message); } finally { b.disabled = false; } }; return b; }
+
+function showLogin() { clearInterval(liveTimer); $('dashboard').hidden = true; $('login-panel').hidden = false; csrf = ''; }
+async function showDashboard(info) {
+  csrf = info.csrf || csrf; $('who').textContent = 'Signed in · session ' + (info.actor || '').split(':').pop();
+  $('login-panel').hidden = true; $('dashboard').hidden = false; selectTab(activeTab);
+  clearInterval(liveTimer); liveTimer = setInterval(() => { if (activeTab === 'codes' && !document.hidden) loadCodes(true); }, 10000);
+}
+$('login-form').onsubmit = async event => {
+  event.preventDefault(); notice('Signing in…');
+  try {
+    const result = await fetch('/api/owner/login', {method: 'POST', credentials: 'same-origin', headers: {'Content-Type': 'application/json'}, body: JSON.stringify({key: $('owner-key').value.trim()})});
+    const data = await result.json().catch(() => ({}));
+    if (!result.ok) throw new Error(typeof data.detail === 'string' ? data.detail : 'Sign-in failed.');
+    $('owner-key').value = ''; notice('');
+    await showDashboard(await api('/api/owner/session'));
+  } catch (error) { notice(error.message); }
+};
+$('logout').onclick = async () => { try { await api('/api/owner/logout', 'POST'); } catch {} showLogin(); notice('Signed out.'); };
+
+function selectTab(tab) {
+  activeTab = tab;
+  document.querySelectorAll('[role=tab]').forEach(t => t.setAttribute('aria-selected', String(t.dataset.tab === tab)));
+  document.querySelectorAll('[data-panel]').forEach(p => p.hidden = p.dataset.panel !== tab);
+  notice('');
+  ({codes: loadCodes, installs: loadInstalls, legacy: loadLegacy, reviews: loadReviews, emails: loadEmails, audit: loadAudit})[tab]();
+}
+document.querySelectorAll('[role=tab]').forEach(t => t.onclick = () => selectTab(t.dataset.tab));
+
+// ---------------------------------------------------------------- codes & orders
+async function loadCodes(quiet) {
+  const params = new URLSearchParams({status: $('code-status').value, q: $('code-search').value.trim()});
+  try {
+    const result = await api('/api/owner/license-orders?' + params);
+    const counts = $('code-counts'); counts.textContent = '';
+    for (const [name, label] of [['pending', 'waiting'], ['approved', 'approved'], ['expired', 'expired'], ['rejected', 'rejected']]) counts.append(el('span', 'pill s-' + name, (result.counts[name] || 0) + ' ' + label));
+    const list = $('code-list'); list.textContent = '';
+    if (!result.orders.length) list.append(el('p', 'meta', 'No orders match.'));
+    for (const order of result.orders) list.append(renderCode(order, result.server_time));
+  } catch (error) { if (!quiet) notice(error.message); }
+}
+function renderCode(order, now) {
+  const card = el('article', 'item'), info = el('div');
+  const title = el('h2', '', 'Order #' + order.id + ' · ' + order.plan_name + ' · ' + inr(order.price_inr)); title.append(pill(order.status));
+  const code = el('div', 'code', order.code_hint);
+  const left = order.code_expires - now;
+  const timing = el('div', 'meta', 'Created ' + when(order.created) + (order.status === 'pending' ? ' · code expires in ' + Math.max(0, Math.floor(left / 3600)) + ' h ' + Math.max(0, Math.floor(left % 3600 / 60)) + ' min' : '') + (order.decided_at ? ' · decided ' + when(order.decided_at) : ''));
+  const device = el('div', 'meta', (order.platform === 'mac' ? 'Mac' : order.platform === 'windows' ? 'Windows' : order.platform) + ' · app ' + (order.app_version || '?') + ' · ' + order.installation_id + (order.payment_reference ? ' · payment: ' + order.payment_reference : '') + (order.note ? ' · note: ' + order.note : ''));
+  const who = el('div', 'who', order.customer_email ? (order.customer_name || '') + ' · ' + order.customer_email : 'No account linked');
+  info.append(title, who, code, timing, device);
+  if (order.entitlement_state) info.append(el('div', 'meta', 'Current plan on this computer: ' + order.entitlement_plan_id + ' · ' + order.entitlement_state + ' until ' + when(order.entitlement_expires)));
+  const actions = el('div', 'actions');
+  if (order.customer_email) actions.append(button('Email', 'secondary', () => openEmail({installation_id: order.installation_id}, order.customer_name, order.customer_email, 'Your AVARA order #' + order.id)));
+  if (order.status === 'pending') {
+    actions.append(button('Approve', '', async () => {
+      if (!confirm('Approve order #' + order.id + ' (' + order.plan_name + ', ' + inr(order.price_inr) + ')? Only approve after you have received the payment.')) return;
+      const result = await api('/api/owner/license-orders/approve', 'POST', {order_id: order.id}); notice(result.message); loadCodes(true);
+    }));
+    actions.append(button('Reject', 'danger', async () => {
+      const reason = prompt('Reject order #' + order.id + '? Optional reason:'); if (reason === null) return;
+      notice((await api('/api/owner/license-orders/' + order.id + '/reject', 'POST', {reason})).message); loadCodes(true);
+    }));
+  }
+  card.append(info, actions); return card;
+}
+$('approve-form').onsubmit = async event => {
+  event.preventDefault();
+  const code = $('approve-code').value.trim();
+  try {
+    const found = await api('/api/owner/license-orders?' + new URLSearchParams({status: 'all', q: code}));
+    const order = found.orders[0];
+    if (!order) throw new Error('No order uses this code. Check it with the customer.');
+    if (order.status !== 'pending') throw new Error('This code is ' + order.status + ' and cannot be approved.');
+    if (!confirm('Approve ' + order.plan_name + ' for ' + inr(order.price_inr) + ' (order #' + order.id + ')? Only approve after receiving payment.')) return;
+    const result = await api('/api/owner/license-orders/approve', 'POST', {code, payment_reference: $('approve-ref').value.trim() || null});
+    $('approve-code').value = ''; $('approve-ref').value = ''; notice(result.message); loadCodes(true);
+  } catch (error) { notice(error.message); }
+};
+$('code-refresh').onclick = () => loadCodes();
+$('code-status').onchange = () => loadCodes();
+$('code-search').onkeydown = event => { if (event.key === 'Enter') { if ($('code-search').value.trim()) $('code-status').value = 'all'; loadCodes(); } };
+
+// ---------------------------------------------------------------- installations
+async function loadInstalls() {
+  try {
+    const result = await api('/api/owner/entitlements?' + new URLSearchParams({q: $('install-search').value.trim()}));
+    plans = result.plans;
+    const list = $('install-list'); list.textContent = '';
+    if (!result.entitlements.length) list.append(el('p', 'meta', 'No activated installations yet.'));
+    for (const item of result.entitlements) list.append(renderInstall(item));
+  } catch (error) { notice(error.message); }
+}
+function renderInstall(item) {
+  const card = el('article', 'item'), info = el('div');
+  const title = el('h2', '', '#' + item.id + ' · ' + item.plan_name); title.append(pill(item.state));
+  info.append(title, el('div', 'meta', 'Until ' + when(item.expires_at) + (item.paused_at && item.state !== 'active' ? ' · stopped ' + when(item.paused_at) : '')),
+    el('div', 'meta', (item.installation_id || 'old app (not yet updated)') + (item.platform ? ' · ' + item.platform : '') + (item.last_seen ? ' · last seen ' + when(item.last_seen) : '')),
+    el('div', 'meta', (item.legacy ? 'From website order #' + item.legacy_order_id : 'From app order #' + item.source_order_id) + (item.customer_name ? ' · ' + item.customer_name + ' · ' + item.customer_email : '')));
+  const actions = el('div', 'actions');
+  if (item.customer_email && item.installation_id) actions.append(button('Email', 'secondary', () => openEmail({installation_id: item.installation_id}, item.customer_name, item.customer_email, 'About your AVARA plan')));
+  else if (item.customer_email) actions.append(button('Email', 'secondary', () => openEmail({email: item.customer_email}, item.customer_name, item.customer_email, 'About your AVARA plan')));
+  const change = async (action, extra, question) => { if (question && !confirm(question)) return; notice((await api('/api/owner/entitlements/' + item.id, 'POST', {action, ...extra})).message); loadInstalls(); };
+  if (item.state === 'cancelled') {
+    // Cancellation is final: only a new code from the customer, approved by you, starts a new plan.
+    actions.append(el('p', 'meta', 'Cancelled for good. The customer can choose a plan in AVARA and send you a new code.'));
+    card.append(info, actions); return card;
+  }
+  if (item.state === 'active') actions.append(button('Pause', 'secondary', () => change('pause', {}, 'Pause #' + item.id + '? AVARA locks within about 30 seconds. You can resume it later.')));
+  if (item.state === 'paused') actions.append(button('Resume', '', () => change('resume')));
+  actions.append(button('Cancel', 'danger', () => change('cancel', {}, 'Cancel #' + item.id + ' for good? This cannot be undone: the customer would need a new code and your approval to use AVARA again.')));
+  const select = el('select'); select.setAttribute('aria-label', 'Plan');
+  for (const plan of plans) { const option = el('option', '', plan.name + ' (' + inr(plan.price_inr) + ')'); option.value = plan.id; option.selected = plan.id === item.plan_id; select.append(option); }
+  actions.append(select, button('Change plan', 'secondary', () => change('change_plan', {plan_id: select.value}, 'Change #' + item.id + ' to ' + select.selectedOptions[0].textContent + '?')));
+  const days = el('input'); days.type = 'number'; days.min = '1'; days.max = '400'; days.value = '30'; days.style.width = '80px'; days.setAttribute('aria-label', 'Days');
+  actions.append(days, button('Extend', 'secondary', () => change('extend', {days: Number(days.value)}, 'Extend #' + item.id + ' by ' + days.value + ' days?')));
+  card.append(info, actions); return card;
+}
+$('install-refresh').onclick = loadInstalls;
+$('install-search').onkeydown = event => { if (event.key === 'Enter') loadInstalls(); };
+
+// ---------------------------------------------------------------- legacy website orders
+async function loadLegacy() {
+  try {
+    const result = await api('/api/admin/orders?include_deleted=' + $('show-deleted').checked);
+    const list = $('legacy-list'); list.textContent = '';
+    if (!result.orders.length) list.append(el('p', 'meta', 'No website orders.'));
+    for (const order of result.orders) list.append(renderLegacy(order));
+  } catch (error) { notice(error.message); }
+}
+function renderLegacy(order) {
+  const card = el('article', 'item'), info = el('div');
+  const title = el('h2', '', 'Order #' + order.id + ' · ' + order.plan); title.append(pill(order.deleted_at ? 'deleted' : order.status));
+  info.append(title, el('div', 'meta', order.name + ' · ' + order.email), el('div', 'meta', (order.platform === 'mac' ? 'Mac' : 'Windows') + ' · add-on: ' + order.addon + ' · customer email: ' + order.delivery_email_status));
+  if (order.activation_expires) info.append(el('div', 'meta', 'Installation: ' + (order.activation_plan || '').toUpperCase() + ' · ' + (order.activation_state || 'active') + ' until ' + when(order.activation_expires) + ' (manage under Installations)'));
+  const actions = el('div', 'actions');
+  if (!order.deleted_at && order.status === 'approved' && !order.activation_expires) {
+    const input = el('input'); input.placeholder = 'Old app code (BASIC-…)'; input.maxLength = 80; input.style.minWidth = '240px';
+    const activate = async replace => {
+      try { notice((await api('/api/admin/order/' + order.id + '/activate', 'POST', {code: input.value, replace_existing: replace})).message); loadLegacy(); }
+      catch (error) { if (!replace && error.detail?.code === 'installation_already_linked' && confirm(error.message)) return activate(true); notice(error.message); }
     };
-    action.append(form);
+    actions.append(input, button('Activate old app', '', () => activate(false)));
+  } else if (!order.deleted_at && order.status === 'pending') {
+    actions.append(button('Approve and email customer', '', async () => { if (!confirm('Approve order #' + order.id + ' and email the customer?')) return; notice((await api('/api/admin/order/' + order.id + '/approve', 'POST')).message); loadLegacy(); }));
   }
-  else if(order.status==='superseded'){
-    const message=document.createElement('p');message.className='meta';message.textContent='Replaced by a newer approved order for this installation.';action.append(message);
-  }else{
-    const button=document.createElement('button');button.className='btn';button.type='button';button.textContent='Approve and email customer';button.disabled=!order.bundle_ready;
-    button.onclick=()=>approve(order.id,button);action.append(button);
-    if(!order.bundle_ready){const missing=document.createElement('div');missing.className='missing';missing.textContent='Release file is missing';action.append(missing);}
-  }
-  const deletion=document.createElement('button');deletion.className='btn '+(order.deleted_at?'secondary':'danger');deletion.type='button';deletion.textContent=order.deleted_at?'Restore order':'Delete order';deletion.style.marginTop='14px';
-  deletion.onclick=async()=>{
-    const operation=order.deleted_at?'restore':'delete';
-    if(!order.deleted_at&&!confirm('Delete order #'+order.id+'? It will disappear from customer orders and stop downloads and activation. You can restore it later.'))return;
-    deletion.disabled=true;
-    try{const result=await ownerApi('/api/admin/order/'+order.id+'/'+operation,'POST');await loadOrders();notice.textContent=result.message;}
-    catch(error){notice.textContent=error.message;deletion.disabled=false;}
-  };
-  action.append(deletion);card.append(action);return card;
+  actions.append(button(order.deleted_at ? 'Restore order' : 'Delete order', order.deleted_at ? 'secondary' : 'danger', async () => {
+    if (!order.deleted_at && !confirm('Delete order #' + order.id + '? Downloads stop and its old-app activation is cancelled. You can restore it.')) return;
+    notice((await api('/api/admin/order/' + order.id + '/' + (order.deleted_at ? 'restore' : 'delete'), 'POST')).message); loadLegacy();
+  }));
+  card.append(info, actions); return card;
 }
-function controlButton(label,action,id,style){
-  const button=document.createElement('button');button.className='btn '+style;button.type='button';button.textContent=label;
-  button.onclick=()=>subscriptionChange(id,action,button);return button;
+$('legacy-refresh').onclick = loadLegacy;
+$('show-deleted').onchange = loadLegacy;
+$('sync-releases').onclick = async () => { notice('Checking installer parts and syncing releases…'); try { notice((await api('/api/admin/releases/publish-catalog', 'POST')).message); } catch (error) { notice(error.message); } };
+
+// ---------------------------------------------------------------- reviews & audit
+async function loadReviews() {
+  try {
+    const result = await api('/api/admin/reviews');
+    const list = $('review-list'); list.textContent = '';
+    if (!result.reviews.length) list.append(el('p', 'meta', 'No submitted reviews yet.'));
+    for (const review of result.reviews) {
+      const card = el('article', 'item'), info = el('div'), body = el('p', '', review.body);
+      body.style.cssText = 'white-space:pre-wrap;overflow-wrap:anywhere;margin:4px 0';
+      const title = el('h2', '', review.name); title.append(pill(review.status));
+      info.append(title, body);
+      const actions = el('div', 'actions');
+      for (const [label, status] of [['Approve', 'approved'], ['Hide', 'rejected']]) actions.append(button(label, 'secondary', async () => { await api('/api/admin/review/' + review.id, 'POST', {status}); notice('Review ' + status + '.'); loadReviews(); }));
+      card.append(info, actions); list.append(card);
+    }
+  } catch (error) { notice(error.message); }
 }
-async function subscriptionChange(id,action,button,plan){
-  if(action==='cancel'&&!confirm('Cancel this AVARA installation? You can restore it later with Continue.'))return;
-  button.disabled=true;notice.textContent='Updating installation…';
-  try{const result=await ownerApi('/api/admin/order/'+id+'/subscription','POST',{action,plan:plan||null});await loadOrders();notice.textContent=result.message;}
-  catch(error){notice.textContent=error.message;button.disabled=false;}
+async function loadAudit() {
+  try {
+    const result = await api('/api/owner/audit?limit=300');
+    const body = $('audit-body'); body.textContent = '';
+    for (const entry of result.entries) {
+      const row = el('tr');
+      row.append(el('td', '', when(entry.at)), el('td', '', entry.actor), el('td', '', entry.action), el('td', '', entry.target || ''), el('td', 'detail', entry.detail ? JSON.stringify(entry.detail) : ''));
+      body.append(row);
+    }
+  } catch (error) { notice(error.message); }
 }
-async function loadOrders(){
-  loadButton.disabled=true;notice.textContent='Loading orders…';orders.textContent='';
-  try{const result=await ownerApi('/api/admin/orders?include_deleted='+showDeleted.checked);result.orders.forEach(order=>orders.append(renderOrder(order)));if(!result.orders.length)orders.textContent='No orders yet.';notice.textContent='';}
-  catch(error){notice.textContent=error.message;}
-  finally{loadButton.disabled=false;}
+$('audit-refresh').onclick = loadAudit;
+
+// ---------------------------------------------------------------- customer emails
+let emailTarget = null;
+function openEmail(target, name, email, subject) {
+  emailTarget = target;
+  $('email-to').textContent = 'To ' + (name ? name + ' · ' : '') + email;
+  $('email-subject').value = subject;
+  $('email-message').value = '';
+  $('email-dialog').showModal();
+  $('email-message').focus();
 }
-const deletedLabel=document.createElement('label'),showDeleted=document.createElement('input');showDeleted.type='checkbox';showDeleted.style.cssText='display:inline-block;width:auto;margin:0 8px 0 0';deletedLabel.append(showDeleted,document.createTextNode('Show deleted orders'));notice.before(deletedLabel);showDeleted.onchange=()=>loadOrders();
-const syncReleases=document.createElement('button');syncReleases.type='button';syncReleases.className='btn secondary';syncReleases.style.marginLeft='16px';syncReleases.textContent='Sync release catalog';deletedLabel.after(syncReleases);syncReleases.onclick=async()=>{syncReleases.disabled=true;notice.textContent='Checking installer parts and syncing releases…';try{const result=await ownerApi('/api/admin/releases/publish-catalog','POST');notice.textContent=result.message;}catch(error){notice.textContent=error.message;}finally{syncReleases.disabled=false;}};
-async function approve(id,button){
-  if(!confirm('Approve order #'+id+' and email the customer?'))return;
-  button.disabled=true;notice.textContent='Approving order and preparing the customer email…';
-  try{const result=await ownerApi('/api/admin/order/'+id+'/approve','POST');notice.textContent=result.message;await loadOrders();}
-  catch(error){notice.textContent=error.message;button.disabled=false;}
+$('email-cancel').onclick = () => $('email-dialog').close();
+$('email-form').addEventListener('submit', async event => {
+  event.preventDefault();
+  $('email-send').disabled = true;
+  try {
+    const result = await api('/api/owner/email', 'POST', {...emailTarget, subject: $('email-subject').value, message: $('email-message').value});
+    $('email-dialog').close();
+    notice(result.message);
+  } catch (error) { notice(error.message); $('email-dialog').close(); }
+  finally { $('email-send').disabled = false; }
+});
+async function loadEmails() {
+  try {
+    const result = await api('/api/owner/emails');
+    $('email-config').textContent = result.configured ? 'Customer emails are sent automatically for orders, approvals and plan changes.'
+      : 'Email sending is not set up yet: add RESEND_API_KEY (and a verified sender in AVARA_STORE_EMAIL_FROM) on Render. Emails below were not delivered.';
+    const body = $('email-body'); body.textContent = '';
+    for (const entry of result.emails) {
+      const row = el('tr'), status = el('td'); status.append(pill(entry.status));
+      if (entry.error) status.append(el('div', 'meta', entry.error));
+      row.append(el('td', '', when(entry.at)), el('td', '', entry.to), el('td', '', entry.kind.replace('_', ' ')), el('td', '', entry.subject), status);
+      body.append(row);
+    }
+    if (!result.emails.length) { const row = el('tr'), cell = el('td', 'meta', 'No emails yet.'); cell.colSpan = 5; row.append(cell); body.append(row); }
+  } catch (error) { notice(error.message); }
 }
-loadButton.onclick=loadOrders;keyInput.onkeydown=event=>{if(event.key==='Enter')loadOrders();};
-document.getElementById('load-reviews').onclick=async()=>{orders.textContent='';notice.textContent='Loading reviews…';try{const result=await ownerApi('/api/admin/reviews');notice.textContent='';if(!result.reviews.length){orders.textContent='No submitted reviews yet.';return;}for(const review of result.reviews){const card=document.createElement('article');card.className='order';const info=document.createElement('div'),name=document.createElement('h2'),body=document.createElement('p'),state=document.createElement('div');name.textContent=review.name;body.textContent=review.body;body.style.whiteSpace='pre-wrap';body.style.overflowWrap='anywhere';state.className='meta';state.textContent='Status: '+review.status;info.append(name,body,state);const actions=document.createElement('div');for(const [label,status] of [['Approve','approved'],['Hide','rejected']]){const button=document.createElement('button');button.type='button';button.className='btn secondary';button.textContent=label;button.onclick=async()=>{button.disabled=true;try{await ownerApi('/api/admin/review/'+review.id,'POST',{status});state.textContent='Status: '+status;notice.textContent='Review '+status+'.';}catch(error){notice.textContent=error.message;}finally{button.disabled=false;}};actions.append(button);}card.append(info,actions);orders.append(card);}}catch(error){notice.textContent=error.message;}};
+$('emails-refresh').onclick = loadEmails;
+
+api('/api/owner/session').then(showDashboard).catch(showLogin);
 </script></body></html>

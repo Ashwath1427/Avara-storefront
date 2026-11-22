@@ -2,3 +2,6 @@ store.db
 *.sqlite
 *.sqlite3
 deliverables/*.zip
+deliverables/installers-*/
+deliverables/storage-parts/
+deliverables/legacy-*/

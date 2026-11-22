@@ -1,0 +1,61 @@
+{
+  "enabled": false,
+  "version": "1.1.0",
+  "platforms": {
+    "windows": {
+      "enabled": true,
+      "version": "1.1.0",
+      "filename": "AVARA-1.1.0-windows-setup.exe",
+      "size": 123130735,
+      "sha256": "fe68f5036c4e562aad49abafd66f574f4f1e4e07ce7a727c43e7ecc425463049",
+      "parts": [
+        {
+          "name": "AVARA-1.1.0-windows-setup.exe.part01",
+          "size": 41943040,
+          "sha256": "e07adffc76dff9717c73d3953ce01dd1238c9e04ecc93f1a1d36c2d5589f1829"
+        },
+        {
+          "name": "AVARA-1.1.0-windows-setup.exe.part02",
+          "size": 41943040,
+          "sha256": "7764e63b1bb65c78d68a76b8d5fbfa9fda87b0930a887ec17070bbe6b42260ee"
+        },
+        {
+          "name": "AVARA-1.1.0-windows-setup.exe.part03",
+          "size": 39244655,
+          "sha256": "1422c5a2f8614c53f054c1508209c8f2f97c1a59be2fcd205ab0820c92e657f3"
+        }
+      ],
+      "requirement": "Windows 10 or 11 (64-bit)"
+    },
+    "mac-arm64": {
+      "enabled": true,
+      "version": "1.1.0",
+      "filename": "AVARA-1.1.0-mac-arm64.dmg",
+      "size": 166449697,
+      "sha256": "3d2b613c8e0614a6874cd553ae93497873df417d5c7328bfbf38f17f414d862e",
+      "parts": [
+        {
+          "name": "AVARA-1.1.0-mac-arm64.dmg.part01",
+          "size": 41943040,
+          "sha256": "c7c1d972a8246c73ffb5bed8fb7813522333cca4e8d6b79dc1c88308f45729d5"
+        },
+        {
+          "name": "AVARA-1.1.0-mac-arm64.dmg.part02",
+          "size": 41943040,
+          "sha256": "ad2cecb7083ce183e87b3e532afedf340b583b47773b3f3be241ba73d4ef894c"
+        },
+        {
+          "name": "AVARA-1.1.0-mac-arm64.dmg.part03",
+          "size": 41943040,
+          "sha256": "18a9bb6821156bf0025dad48f292c8a12e1149e9ea5214897e3910d9f28bf270"
+        },
+        {
+          "name": "AVARA-1.1.0-mac-arm64.dmg.part04",
+          "size": 40620577,
+          "sha256": "bdfcaf3258192d0fa6e1e00ddd1ad219a0c8ee3aadc397958f1293a681aa6e51"
+        }
+      ],
+      "requirement": "Apple Silicon, macOS 14 or later"
+    }
+  }
+}

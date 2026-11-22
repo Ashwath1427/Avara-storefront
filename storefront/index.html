@@ -3,362 +3,523 @@
 <head>
   <meta charset="utf-8">
   <meta name="viewport" content="width=device-width,initial-scale=1">
-  <meta name="theme-color" content="#070b12">
-  <title>AVARA — Your personal intelligence</title>
-  <link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600&family=Space+Grotesk:wght@600;700&display=swap">
+  <meta name="theme-color" content="#080b10">
+  <meta name="description" content="AVARA is a personal AI assistant for Windows and Apple Silicon Macs. Plan your day, study, build websites and presentations, and control your desktop.">
+  <title>AVARA — Your desktop. Your AI.</title>
+  <link rel="preconnect" href="https://fonts.googleapis.com">
+  <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+  <link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=DM+Mono:wght@400;500&family=Manrope:wght@400;500;600;700;800&display=swap">
   <style>
+    /* ---------- tokens (AVARA "Special" palette) ---------- */
     :root {
       color-scheme: dark;
-      --bg:#080a10; --panel:#11151e; --line:#29313e; --cyan:#a9ffdf;
-      --text:#f2f5fa; --muted:#aab6c8; --violet:#c7b8ff; --blue:var(--violet);
-      font:16px/1.6 "Segoe UI", system-ui, sans-serif;
+      --bg: #080b10; --surface: #11151b; --surface-2: #181c23; --surface-3: #20252d;
+      --line: #ffffff1f; --line-strong: #ffffff33;
+      --text: #f5f7fa; --text-2: #d7dde5; --muted: #afb5bf; --faint: #8a919c;
+      --accent: #8be9ff; --accent-ink: #06131a; --accent-soft: #8be9ff1f;
+      --pass: #8ff0c8; --warn: #ffd486;
+      /* aliases used by reward.js */
+      --panel: var(--surface); --cyan: var(--accent);
+      --s1: 4px; --s2: 8px; --s3: 12px; --s4: 16px; --s5: 24px; --s6: 32px; --s7: 48px; --s8: 64px; --s9: 96px;
+      --r-sm: 10px; --r-md: 14px; --r-lg: 20px; --r-pill: 999px;
+      --fs-xs: .8125rem; --fs-sm: .9375rem; --fs-md: 1.0625rem; --fs-lg: clamp(1.25rem, 1.1rem + .6vw, 1.5rem);
+      --fs-xl: clamp(2rem, 1.4rem + 2.6vw, 3.25rem); --fs-2xl: clamp(2.75rem, 1.6rem + 5.2vw, 5.5rem);
+      --ease: 180ms ease;
+      --wrap: min(1180px, 100% - 2 * var(--s5));
+      font: 400 16px/1.6 Manrope, "Segoe UI", system-ui, sans-serif;
     }
-    * { box-sizing:border-box }
-    [hidden] { display:none !important }
-    body { margin:0; color:var(--text); background:var(--bg) }
-    a { color:var(--cyan); text-underline-offset:.22em }
-    button,input,select { font:inherit }
-    button:disabled { opacity:.65; cursor:wait }
-    :focus-visible { outline:2px solid var(--cyan); outline-offset:4px }
-    .wrap { width:min(100% - 3rem, 76rem); margin:auto }
-    .nav { display:flex; justify-content:space-between; align-items:center; gap:1.25rem; min-height:5.25rem; border-bottom:1px solid var(--line) }
-    .brand { display:inline-flex; align-items:center; gap:.7rem; color:var(--text); text-decoration:none; font-size:1rem; letter-spacing:.26em; font-weight:800 }
-    .mark { display:grid; place-items:center; width:2.4rem; height:2.4rem; border:1px solid #465761; border-radius:.7rem; background:#19262a; color:var(--cyan); font-size:1.42rem; letter-spacing:0 }
-    .nav-links { display:flex; flex-wrap:wrap; align-items:center; gap:.6rem clamp(.75rem,2vw,1.6rem) }
-    .nav-links a { color:var(--muted); text-decoration:none; font-size:.9rem }
-    .nav-links a:hover { color:var(--text) }
-    .nav-links #bag-link { color:var(--text); border:1px solid var(--line); border-radius:.6rem; padding:.42rem .75rem }
-    .hero { display:grid; grid-template-columns:1.02fr 1fr; align-items:center; gap:clamp(1.75rem,5vw,5rem); min-height:35rem; padding:clamp(3rem,7vw,7rem) 0 }
-    .eyebrow { color:var(--cyan); font:700 .78rem/1.45 ui-monospace, Consolas, monospace; letter-spacing:.13em }
-    .hero h1 { max-width:12ch; font-size:clamp(3rem,6.5vw,6.15rem); line-height:.98; margin:.25em 0; letter-spacing:-.071em }
-    .hero h1 span { color:var(--cyan) }
-    .hero-copy>p { max-width:36ch; color:var(--muted); font-size:clamp(1rem,1.55vw,1.22rem); margin:1.5rem 0 }
-    .hero-actions { display:flex; flex-wrap:wrap; align-items:center; gap:.75rem }
-    .btn { display:inline-flex; justify-content:center; align-items:center; padding:.7rem 1.1rem; min-height:2.85rem; border:1px solid transparent; border-radius:.6rem; background:var(--cyan); color:#0d2220; font-size:.95rem; font-weight:750; text-decoration:none; cursor:pointer }
-    .btn:hover:not(:disabled) { background:#cbffed }
-    .btn.secondary,#refresh-orders { background:#171d29; border-color:#3b4556; color:var(--text) }
-    .btn.secondary:hover,#refresh-orders:hover { background:#242c3d }
-    .preview { margin:0; min-width:0; border:1px solid #354350; border-radius:1.25rem; background:#10151f; box-shadow:0 1.2rem 4rem #0007, 0 0 4rem #9b8aff14 }
-    .preview figcaption { display:flex; justify-content:space-between; gap:.75rem; padding:.85rem 1.15rem; color:var(--muted); border-bottom:1px solid var(--line); font-size:.83rem }
-    .preview figcaption strong { color:var(--text) }
-    .preview-stage { display:grid; place-items:center; padding:1.6rem 1rem 1.3rem; background:radial-gradient(ellipse at 50% 42%,#284447 0,transparent 59%),radial-gradient(ellipse at 80% 72%,#242749 0,transparent 58%) }
-    .preview-orb { display:grid; place-items:center; font-size:3.8rem; color:var(--cyan); width:min(52%,10rem); aspect-ratio:1; border-radius:50%; background:radial-gradient(circle,#b6ffde40,transparent 63%); border:1px solid #a2ffdf7d; box-shadow:0 0 2rem #6fffc745,inset 0 0 2rem #6fffc72b,0 0 0 .45rem #82ffd72a,0 0 0 1rem #82ffd715; margin:1.2rem }
-    .preview-prompt { width:100%; margin:.6rem 0 0; padding:.7rem .85rem; border:1px solid #425761; border-radius:.6rem; color:var(--text); background:#121a25; font-size:.9rem }
-    .preview-tasks { list-style:none; margin:0; padding:.4rem 1.1rem .85rem }
-    .preview-tasks li { display:flex; align-items:baseline; justify-content:space-between; gap:.75rem; padding:.55rem 0; color:var(--muted); font-size:.88rem }
-    .preview-tasks li+li { border-top:1px solid var(--line) }
-    .preview-tasks time { color:var(--violet); white-space:nowrap }
-    #plans { padding:clamp(2.7rem,6vw,5rem) 0; border-top:1px solid var(--line) }
-    .section-title,.formbox h2 { margin:.35rem 0 1.25rem; letter-spacing:-.045em; font-size:clamp(2rem,4.7vw,3.6rem); line-height:1.06 }
-    .plans { display:grid; grid-template-columns:repeat(3,minmax(0,1fr)); gap:1rem }.formgrid { display:grid; grid-template-columns:repeat(2,minmax(0,1fr)); gap:1rem }
-    .card { display:flex; flex-direction:column; padding:clamp(1.25rem,3.5vw,2.5rem); border:1px solid var(--line); border-radius:1rem; background:var(--panel) }
-    .card.featured { border-color:#7667a6; background:linear-gradient(145deg,#221d37,var(--panel) 72%) }
-    .card.featured .eyebrow { color:var(--violet) }
-    .price { font-size:clamp(2.2rem,4.8vw,3.65rem); font-weight:800; letter-spacing:-.045em; margin:.4rem 0 0 }
-    .price small,.old-price { color:var(--muted); font-size:.95rem; font-weight:500; letter-spacing:0 }
-    .old-price { text-decoration:line-through }
-    .card ul { padding-left:1.2rem; margin:.65rem 0 1.5rem; color:var(--muted) }
-    .card li { margin:.4rem 0 }
-    .card li::marker { color:var(--cyan) }
-    .card .btn { margin-top:auto; align-self:flex-start }
-    .card.featured .btn { background:var(--violet); color:#201932 }
-    .card.featured .btn:hover { background:#e0d7ff }
-    .fine { font-size:.9rem; color:var(--muted) }
-    .comparison { margin-top:2.5rem }
-    .comparison-heading h3,.orders-top h3 { margin:0; font-size:1.35rem }
-    .comparison-wrap { overflow-x:auto; border:1px solid var(--line); border-radius:.85rem; background:var(--panel) }
-    .comparison-table { width:100%; min-width:36rem; border-collapse:collapse }
-    .comparison-table :is(th,td) { padding:.8rem 1rem; border-bottom:1px solid var(--line); text-align:left }
-    .comparison-table :is(th,td):first-child { width:42% }
-    .comparison-table thead { background:#191f2b }
-    .comparison-table thead th:last-child { color:var(--violet) }
-    .comparison-table tbody td { color:var(--muted) }
-    .comparison-table td.yes { color:var(--cyan) }
-    .status-soon { display:inline-block; color:var(--violet); font-size:.75rem; margin-left:.25rem }
-    .formbox { padding:clamp(1.25rem,4vw,3rem); background:var(--panel); border:1px solid var(--line); border-radius:1.15rem; margin:0 0 3.75rem }
-    .order-layout { display:grid; grid-template-columns:minmax(0,.75fr) minmax(0,1fr); gap:clamp(1rem,4vw,4rem) }
-    .order-intro p { max-width:34ch }
-    .auth-tabs { display:inline-flex; flex-wrap:wrap; gap:.25rem; margin:0 0 1rem; padding:.25rem; border-radius:.75rem; background:#080c13; border:1px solid var(--line) }
-    .auth-tabs .btn { min-height:2.35rem; padding:.35rem .9rem }
-    .auth-tabs [aria-pressed="false"] { color:var(--muted); background:transparent }
-    .auth-tabs [aria-pressed="false"]:hover:not(:disabled) { background:#232b39; color:var(--text) }
-    label { display:block; color:var(--text); font-size:.9rem }
-    input,select { display:block; width:100%; margin-top:.35rem; border:1px solid #414d60; border-radius:.55rem; background:#0a0e16; color:var(--text); padding:.7rem; min-height:2.85rem }
-    input[type="checkbox"] { display:inline-block; width:1.05rem; min-height:0; height:1.05rem; margin:0 .35rem 0 0; vertical-align:middle; accent-color:var(--cyan) }
-    .formbox form>button { margin-top:1rem }
-    .terms { margin:1rem 0 }
-    .notice { display:none; margin-top:1rem; padding:.8rem; color:#ffe3bb; background:#231a12; border:1px solid #785838; border-radius:.55rem }
-    #signed-in { color:var(--cyan); margin:0 0 1rem; overflow-wrap:anywhere }
-    .customer-orders { border-top:1px solid var(--line); margin-top:1.7rem; padding-top:1.25rem }
-    .orders-top,.order-card { display:flex; flex-wrap:wrap; justify-content:space-between; align-items:center; gap:.7rem }
-    .orders-list { display:grid; gap:.65rem }
-    .order-card { padding:.9rem; border:1px solid var(--line); border-radius:.6rem; background:#0b121c }
-    .order-card strong,.order-card span { display:block }
-    .order-status { color:var(--cyan) }
-    footer { border-top:1px solid var(--line); padding:1.5rem 0; color:var(--muted) }
-    @media (max-width:800px) {
-      .hero,.order-layout { grid-template-columns:1fr }
-      .hero { min-height:auto }
-      .preview { width:min(100%,36rem) }
+    @media (max-width: 600px) { :root { --wrap: calc(100% - 2 * var(--s4)); } }
+
+    /* ---------- base ---------- */
+    *, *::before, *::after { box-sizing: border-box; }
+    [hidden] { display: none !important; }
+    html { scroll-behavior: smooth; scroll-padding-top: 88px; }
+    body { margin: 0; background: var(--bg); color: var(--text); -webkit-font-smoothing: antialiased; }
+    h1, h2, h3, h4 { margin: 0; line-height: 1.12; letter-spacing: -.025em; font-weight: 800; }
+    p { margin: 0; }
+    a { color: var(--accent); text-underline-offset: .2em; }
+    button, input, select { font: inherit; }
+    :focus-visible { outline: 2px solid var(--accent); outline-offset: 3px; border-radius: 6px; }
+    .wrap { width: var(--wrap); margin-inline: auto; }
+    .eyebrow { font: 500 var(--fs-xs)/1.4 "DM Mono", ui-monospace, monospace; letter-spacing: .18em; text-transform: uppercase; color: var(--accent); }
+    .fine { color: var(--muted); font-size: var(--fs-sm); }
+    .skip { position: absolute; left: var(--s4); top: -60px; background: var(--accent); color: var(--accent-ink); padding: var(--s2) var(--s4); border-radius: var(--r-sm); z-index: 10; }
+    .skip:focus { top: var(--s3); }
+
+    /* ---------- buttons ---------- */
+    .btn {
+      display: inline-flex; align-items: center; justify-content: center; gap: var(--s2);
+      min-height: 46px; padding: 0 var(--s5); border: 1px solid transparent; border-radius: var(--r-pill);
+      background: var(--accent); color: var(--accent-ink); font-weight: 700; text-decoration: none; cursor: pointer;
+      transition: transform var(--ease), background-color var(--ease), border-color var(--ease);
     }
-    @media (max-width:540px) {
-      .wrap { width:calc(100% - 2rem) }
-      .nav { align-items:flex-start; flex-direction:column; padding:.85rem 0 }
-      .plans,.formgrid { grid-template-columns:1fr }
-      .comparison-wrap::after { content:""; display:block }
+    .btn:hover { background: #b2f1ff; }
+    .btn:active { transform: translateY(1px); }
+    .btn.ghost { background: transparent; color: var(--text); border-color: var(--line-strong); }
+    .btn.ghost:hover { border-color: var(--accent); background: var(--accent-soft); }
+    .btn[aria-disabled="true"], .btn:disabled { opacity: .5; pointer-events: none; cursor: default; }
+
+    /* ---------- nav ---------- */
+    .topbar { position: sticky; top: 0; z-index: 5; background: color-mix(in srgb, var(--bg) 82%, transparent); backdrop-filter: blur(14px); border-bottom: 1px solid var(--line); }
+    .nav { display: flex; align-items: center; justify-content: space-between; gap: var(--s4); min-height: 72px; }
+    .brand { display: inline-flex; align-items: center; gap: var(--s3); color: var(--text); text-decoration: none; font-weight: 800; letter-spacing: .24em; }
+    .mark { display: grid; place-items: center; width: 36px; height: 36px; border: 1.5px solid var(--accent); border-radius: 50%; color: var(--accent); letter-spacing: 0; font-size: 15px; }
+    .nav-links { display: flex; align-items: center; gap: var(--s5); }
+    .nav-links a { color: var(--muted); text-decoration: none; font-size: var(--fs-sm); font-weight: 600; }
+    .nav-links a:hover { color: var(--text); }
+    .nav-links .btn { min-height: 40px; padding: 0 var(--s4); color: var(--accent-ink); }
+    @media (max-width: 860px) { .nav-links a:not(.btn):not(.keep) { display: none; } }
+
+    /* ---------- sections ---------- */
+    section { padding-block: var(--s9); }
+    .section-head { display: grid; gap: var(--s3); max-width: 720px; margin-bottom: var(--s7); }
+    .section-head.center { margin-inline: auto; text-align: center; justify-items: center; }
+    .section-head h2 { font-size: var(--fs-xl); }
+    .section-head p { color: var(--muted); font-size: var(--fs-md); }
+    .divider { border: 0; border-top: 1px solid var(--line); margin: 0; }
+
+    /* ---------- hero ---------- */
+    .hero { padding-block: var(--s9) var(--s8); background: radial-gradient(ellipse 70% 60% at 70% 0%, #171c24, transparent 70%); }
+    .hero-grid { display: grid; gap: var(--s7); align-items: center; grid-template-columns: minmax(0, 1fr); }
+    @media (min-width: 980px) { .hero-grid { grid-template-columns: minmax(0, 1.05fr) minmax(0, 1fr); } }
+    /* The first screen is the hero alone: it fills the window below the top bar, and the
+       next section starts only after scrolling. */
+    .hero { display: flex; align-items: center; min-height: calc(100vh - 73px); min-height: calc(100svh - 73px); }
+    .hero > .wrap { width: var(--wrap); }
+    .hero-copy { display: grid; gap: var(--s5); justify-items: start; }
+    .pill { display: inline-flex; align-items: center; gap: var(--s2); padding: var(--s1) var(--s3); border: 1px solid var(--line-strong); border-radius: var(--r-pill); font: 500 var(--fs-xs)/1.6 "DM Mono", monospace; letter-spacing: .12em; color: var(--text-2); }
+    .pill::before { content: ""; width: 7px; height: 7px; border-radius: 50%; background: var(--pass); }
+    .hero h1 { font-size: var(--fs-2xl); letter-spacing: -.04em; }
+    .hero h1 span { display: block; background: linear-gradient(100deg, var(--accent), #e6f9ff 70%); -webkit-background-clip: text; background-clip: text; color: transparent; }
+    .hero-lead { max-width: 560px; color: var(--muted); font-size: var(--fs-lg); line-height: 1.5; }
+    .hero-actions { display: flex; flex-wrap: wrap; gap: var(--s3); }
+    .platforms { display: flex; flex-wrap: wrap; gap: var(--s2) var(--s5); color: var(--faint); font-size: var(--fs-sm); }
+
+    /* app preview (pure CSS mock of the AVARA window) */
+    .preview { margin: 0; border: 1px solid var(--line-strong); border-radius: var(--r-lg); background: linear-gradient(160deg, var(--surface-2), var(--surface)); box-shadow: 0 40px 120px #0008; overflow: hidden; }
+    .preview-bar { display: flex; align-items: center; gap: var(--s2); padding: var(--s3) var(--s4); border-bottom: 1px solid var(--line); color: var(--faint); font-size: var(--fs-xs); }
+    .preview-bar i { width: 10px; height: 10px; border-radius: 50%; background: var(--surface-3); }
+    .preview-bar span { margin-inline-start: auto; font-family: "DM Mono", monospace; letter-spacing: .1em; }
+    .preview-body { display: grid; gap: var(--s4); padding: var(--s5); }
+    .orb { justify-self: center; display: grid; place-items: center; width: 112px; height: 112px; border-radius: 50%; border: 1px solid #8be9ff55; background: radial-gradient(circle at 50% 40%, #8be9ff26, transparent 65%); color: var(--accent); font-size: 34px; box-shadow: 0 0 0 14px #8be9ff0a, 0 0 0 28px #8be9ff06; }
+    .greeting { text-align: center; font-weight: 800; font-size: 1.5rem; letter-spacing: -.02em; }
+    .chat { display: grid; gap: var(--s2); }
+    .bubble { max-width: 85%; padding: var(--s3) var(--s4); border-radius: var(--r-md); font-size: var(--fs-sm); line-height: 1.5; }
+    .bubble.me { justify-self: end; background: var(--surface-3); border: 1px solid var(--line); }
+    .bubble.ai { background: var(--accent-soft); border: 1px solid #8be9ff33; color: var(--text-2); }
+    .plan-list { display: grid; gap: var(--s2); margin: var(--s2) 0 0; padding: 0; list-style: none; }
+    .plan-list li { display: flex; justify-content: space-between; gap: var(--s3); font-size: var(--fs-xs); color: var(--muted); }
+    .plan-list time { color: var(--accent); font-family: "DM Mono", monospace; }
+    .composer { display: flex; align-items: center; gap: var(--s3); padding: var(--s3) var(--s4); border: 1px solid var(--line-strong); border-radius: var(--r-pill); color: var(--faint); font-size: var(--fs-sm); }
+    .composer b { margin-inline-start: auto; display: grid; place-items: center; width: 30px; height: 30px; border-radius: 50%; background: var(--accent); color: var(--accent-ink); }
+
+    /* ---------- steps ---------- */
+    .steps { display: grid; gap: var(--s4); grid-template-columns: repeat(auto-fit, minmax(min(100%, 230px), 1fr)); counter-reset: step; margin: 0; padding: 0; list-style: none; }
+    .step { display: grid; align-content: start; gap: var(--s2); padding: var(--s5); border: 1px solid var(--line); border-radius: var(--r-lg); background: var(--surface); counter-increment: step; }
+    .step::before { content: "0" counter(step); font: 500 var(--fs-xs)/1 "DM Mono", monospace; color: var(--accent); letter-spacing: .1em; }
+    .step h3 { font-size: 1.125rem; }
+    .step p { color: var(--muted); font-size: var(--fs-sm); }
+    .step code { font-family: "DM Mono", monospace; color: var(--accent); }
+
+    /* ---------- features ---------- */
+    .features { display: grid; gap: var(--s4); grid-template-columns: repeat(auto-fit, minmax(min(100%, 300px), 1fr)); }
+    .feature { display: grid; align-content: start; gap: var(--s3); padding: var(--s5); border: 1px solid var(--line); border-radius: var(--r-lg); background: linear-gradient(160deg, var(--surface-2), var(--surface)); transition: border-color var(--ease); }
+    .feature:hover { border-color: var(--line-strong); }
+    .feature-top { display: flex; justify-content: space-between; align-items: center; gap: var(--s3); }
+    .feature .icon { display: grid; place-items: center; width: 42px; height: 42px; border-radius: var(--r-sm); background: var(--accent-soft); color: var(--accent); font-size: 20px; }
+    .feature h3 { font-size: 1.1875rem; }
+    .feature p { color: var(--muted); font-size: var(--fs-sm); }
+    .tag { padding: 2px var(--s2); border: 1px solid #8be9ff55; border-radius: var(--r-pill); color: var(--accent); font: 500 .6875rem/1.6 "DM Mono", monospace; letter-spacing: .1em; text-transform: uppercase; }
+
+    /* ---------- plans ---------- */
+    .plans { display: grid; gap: var(--s4); grid-template-columns: repeat(auto-fit, minmax(min(100%, 250px), 1fr)); align-items: stretch; }
+    .plan { display: flex; flex-direction: column; gap: var(--s4); padding: var(--s6) var(--s5); border: 1px solid var(--line); border-radius: var(--r-lg); background: var(--surface); }
+    .plan.pro { border-color: #8be9ff66; background: linear-gradient(170deg, #142028, var(--surface) 60%); }
+    .plan h3 { font-size: 1.25rem; }
+    .price { display: flex; align-items: baseline; flex-wrap: wrap; gap: var(--s2); font-weight: 800; font-size: clamp(2.25rem, 1.8rem + 1.6vw, 3rem); letter-spacing: -.03em; line-height: 1; }
+    .price small { font-size: var(--fs-sm); font-weight: 600; color: var(--muted); letter-spacing: 0; }
+    .price s { font-size: 1.125rem; font-weight: 600; color: var(--faint); }
+    .plan ul { display: grid; align-content: start; gap: var(--s2); margin: 0; padding: var(--s4) 0 0; border-top: 1px solid var(--line); list-style: none; color: var(--text-2); font-size: var(--fs-sm); flex: 1; }
+    .plan li { display: grid; grid-template-columns: 18px minmax(0, 1fr); gap: var(--s2); }
+    .plan li::before { content: "✓"; color: var(--accent); font-weight: 800; }
+    .plan .btn { width: 100%; }
+    .plan:not(.pro) .btn { background: transparent; color: var(--text); border-color: var(--line-strong); }
+    .plan:not(.pro) .btn:hover { border-color: var(--accent); background: var(--accent-soft); }
+    .plans-note { margin-top: var(--s5); text-align: center; }
+
+    .compare { margin-top: var(--s8); }
+    .compare h3 { font-size: var(--fs-lg); margin-bottom: var(--s4); text-align: center; }
+    .table-wrap { overflow-x: auto; border: 1px solid var(--line); border-radius: var(--r-lg); background: var(--surface); }
+    table { width: 100%; min-width: 620px; border-collapse: collapse; font-size: var(--fs-sm); }
+    th, td { padding: var(--s3) var(--s4); text-align: center; border-bottom: 1px solid var(--line); color: var(--text-2); }
+    th:first-child, td:first-child { text-align: left; }
+    tbody tr:last-child td { border-bottom: 0; }
+    th { color: var(--text); font-weight: 700; }
+    th small { display: block; color: var(--muted); font-weight: 500; }
+    td:last-child, th:last-child { background: #8be9ff0a; }
+    td.yes { color: var(--accent); font-weight: 700; }
+    .soon { padding: 1px 6px; border: 1px solid var(--line-strong); border-radius: var(--r-pill); font-size: .6875rem; color: var(--muted); }
+
+    /* ---------- download ---------- */
+    .download-band { background: linear-gradient(180deg, transparent, #0d1117 30%, #0d1117 70%, transparent); }
+    .downloads { display: grid; gap: var(--s4); grid-template-columns: repeat(auto-fit, minmax(min(100%, 320px), 1fr)); }
+    .download-card { display: grid; gap: var(--s3); padding: var(--s6); border: 1px solid var(--line-strong); border-radius: var(--r-lg); background: var(--surface); }
+    .download-card h3 { font-size: 1.5rem; }
+    .download-card .btn { margin-top: var(--s2); }
+    .download-card .detail { min-height: 1.4em; overflow-wrap: anywhere; }
+
+    /* ---------- FAQ ---------- */
+    .faq { display: grid; gap: var(--s3); max-width: 820px; margin-inline: auto; }
+    .faq details { border: 1px solid var(--line); border-radius: var(--r-md); background: var(--surface); }
+    .faq summary { display: flex; justify-content: space-between; align-items: center; gap: var(--s4); min-height: 56px; padding: var(--s3) var(--s5); cursor: pointer; font-weight: 700; list-style: none; }
+    .faq summary::-webkit-details-marker { display: none; }
+    .faq summary::after { content: "+"; color: var(--accent); font-size: 1.4rem; font-weight: 500; transition: transform var(--ease); }
+    .faq details[open] summary::after { transform: rotate(45deg); }
+    .faq details p { padding: 0 var(--s5) var(--s5); color: var(--muted); }
+
+    /* ---------- account ---------- */
+    .account { display: grid; gap: var(--s5); max-width: 640px; margin-inline: auto; padding: var(--s6); border: 1px solid var(--line); border-radius: var(--r-lg); background: var(--surface); }
+    .tabs { display: grid; grid-template-columns: 1fr 1fr; gap: var(--s1); padding: var(--s1); border-radius: var(--r-pill); background: var(--bg); border: 1px solid var(--line); }
+    .tabs button { min-height: 42px; border: 0; border-radius: var(--r-pill); background: transparent; color: var(--muted); font-weight: 700; cursor: pointer; }
+    .tabs button[aria-pressed="true"] { background: var(--surface-3); color: var(--text); }
+    .form { display: grid; gap: var(--s4); }
+    #account-form { margin-top: var(--s5); }
+    label { display: grid; gap: var(--s2); color: var(--text-2); font-size: var(--fs-sm); font-weight: 600; }
+    input { min-height: 48px; padding: 0 var(--s4); border: 1px solid var(--line-strong); border-radius: var(--r-sm); background: var(--bg); color: var(--text); font-size: 1rem; }
+    input:focus-visible { outline: 2px solid var(--accent); outline-offset: 1px; }
+    .form .btn { width: 100%; }
+    .block { display: grid; gap: var(--s3); padding-top: var(--s5); border-top: 1px solid var(--line); }
+    .block-head { display: flex; justify-content: space-between; align-items: center; gap: var(--s3); flex-wrap: wrap; }
+    .block-head h3 { font-size: 1.25rem; }
+    .block-head .btn { min-height: 40px; padding: 0 var(--s4); }
+    .list { display: grid; gap: var(--s2); }
+    .item { display: flex; flex-wrap: wrap; justify-content: space-between; align-items: center; gap: var(--s3); padding: var(--s4); border: 1px solid var(--line); border-radius: var(--r-md); background: var(--bg); }
+    .item > div { display: grid; gap: 2px; min-width: 0; }
+    .item strong { overflow-wrap: anywhere; }
+    .status { color: var(--accent); font-size: var(--fs-sm); font-weight: 600; }
+    .notice { padding: var(--s3) var(--s4); border: 1px solid #ffd48655; border-radius: var(--r-sm); background: #ffd4860f; color: var(--warn); }
+    .notice:empty { display: none; }
+    .signed-in { color: var(--text-2); font-weight: 600; }
+
+    /* ---------- footer ---------- */
+    footer { padding-block: var(--s7); border-top: 1px solid var(--line); color: var(--faint); }
+    .foot { display: flex; flex-wrap: wrap; justify-content: space-between; gap: var(--s4); align-items: center; }
+    .foot nav { display: flex; flex-wrap: wrap; gap: var(--s4); }
+    .foot a { color: var(--muted); text-decoration: none; font-size: var(--fs-sm); }
+    .foot a:hover { color: var(--text); }
+    .foot .fine { flex: 1 1 100%; }
+
+    @media (max-width: 600px) {
+      section { padding-block: var(--s8); }
+      .hero { padding-block: var(--s8) var(--s7); }
+      .account { padding: var(--s5); }
+      .hero-actions .btn { flex: 1 1 100%; }
     }
-    :root{--bg:#0A0A10;--surface:#13131C;--border:#26263A;--border-strong:#34344A;--text:#fff;--text-2:#D4D4E0;--muted:#A9A9BC;--faint:#8A8AA0;--blue:#3B5BFF;--blue-light:#9DB0FF;--purple:#7C3AED;--purple-light:#B79CFF;--pro-surface:#16132A;--pro-col:#1B1735;--cyan:var(--blue-light);--panel:var(--surface);--line:var(--border);--violet:var(--purple-light);font-family:Inter,sans-serif}
-    body{background:var(--bg);color:var(--text)}.wrap{width:min(100% - 64px,1200px)}h1,h2,h3,.price,.brand{font-family:'Space Grotesk',sans-serif;letter-spacing:-.035em}a{color:var(--blue-light)}a:hover{color:#c7d1ff}:focus-visible{outline:2px solid var(--blue-light);outline-offset:4px}.nav{min-height:80px}.brand{letter-spacing:.2em}.mark{width:36px;height:36px;border:2px solid var(--purple);border-radius:50%;background:none;color:var(--purple-light)}.nav-links #bag-link{border:1px solid var(--border-strong);border-radius:10px}.hero{display:flex;flex-direction:column;text-align:center;padding:120px 0 80px;min-height:0}.hero-copy{display:flex;flex-direction:column;align-items:center}.hero .eyebrow{border:1px solid var(--border-strong);border-radius:999px;padding:8px 14px;color:var(--purple-light);letter-spacing:.16em}.hero .eyebrow::before{content:'';display:inline-block;width:8px;height:8px;background:var(--purple);border-radius:50%;margin-right:9px}.hero h1{max-width:none;font-size:clamp(48px,7vw,96px);line-height:1;letter-spacing:-.04em}.hero h1 span{color:var(--blue-light)}.hero-copy>p{max-width:620px;font-size:19px}.hero-actions{justify-content:center}.hero::after{content:'';display:block;width:100%;height:1px;background:var(--border);margin-top:65px}.preview{max-width:520px;width:100%;box-shadow:none;background:var(--surface);border-color:var(--border)}.preview-stage,.preview-orb{background:var(--surface);box-shadow:none}.preview-orb{border-color:var(--purple);color:var(--purple-light)}.btn{min-height:44px;border-radius:12px;background:var(--blue);color:white;font-weight:600}.btn:hover:not(:disabled){background:#526fff}.btn.secondary,#refresh-orders{background:transparent;border-color:var(--border-strong);color:var(--text)}#plans{text-align:center}.section-title{font-size:clamp(34px,4vw,52px)}.eyebrow{color:var(--purple-light)}.plans{text-align:left}.card{padding:36px;border-radius:20px;background:var(--surface);border-color:var(--border)}.card.featured{background:var(--pro-surface);border:2px solid var(--purple)}.card .eyebrow{color:var(--text-2)}.card.featured .eyebrow{color:var(--purple-light)}.price{font-size:clamp(42px,5vw,64px)}.old-price{font-size:20px;color:var(--faint)}.card ul{border-top:1px solid var(--border-strong);padding-top:20px;color:var(--text-2)}.card li::marker{color:var(--blue-light)}.card.featured li::marker{color:var(--purple-light)}.card:not(.featured) .btn{background:transparent;border-color:var(--border-strong);color:white}.card.featured .btn{background:var(--blue);color:white}.card.featured .btn:hover{background:#526fff}.comparison-heading h3{font-size:34px}.comparison-wrap{border-radius:20px;background:var(--surface)}.comparison-table{min-width:680px}.comparison-table :is(th,td){text-align:center;color:var(--text-2)}.comparison-table :is(th,td):first-child{text-align:left}.comparison-table :is(th,td):last-child{background:var(--pro-col)}.comparison-table td.yes{color:var(--blue-light);font-weight:600}.comparison-table td.yes:last-child{color:var(--purple-light)}.status-soon{border:1px solid var(--purple);border-radius:999px;padding:2px 7px;color:var(--purple-light)}.comparison-note{color:var(--faint);font-size:14px}.formbox{max-width:560px;margin:0 auto 60px;padding:36px;border-radius:20px;background:var(--surface);border-color:var(--border)}.order-layout{display:block}.order-intro{text-align:center}.order-intro p{max-width:none}.auth-tabs{display:flex;width:100%;background:var(--bg)}.auth-tabs .btn{flex:1;background:var(--border);color:white}.auth-tabs [aria-pressed=false]{background:transparent}.formgrid{grid-template-columns:1fr}input,select{min-height:50px;background:var(--bg);border-color:var(--border-strong);border-radius:12px}.formbox form>button{width:100%}.notice,.order-card{background:var(--surface)}footer{border-color:var(--border);color:var(--faint)}footer .fine{color:var(--faint);font-size:14px}@media(max-width:900px){.plans{grid-template-columns:repeat(2,minmax(0,1fr))}}@media(max-width:600px){.wrap{width:calc(100% - 32px)}.nav{align-items:flex-start}.hero{padding:80px 0 60px}.plans{grid-template-columns:1fr}.card{padding:26px}.formbox{padding:24px}.hero h1{font-size:clamp(42px,10vw,60px)}}
-    /* Midnight reference: preserve every existing section and plan. */
-    .hero h1{max-width:900px}.hero h1 span{display:block}.hero .preview{margin-top:50px}.hero::after{max-width:900px;background:var(--border)}.plans{grid-template-columns:repeat(2,minmax(0,1fr))}.plans>.card:nth-child(3){grid-column:1/-1}.card .btn{width:100%}.card ul{list-style:none;padding-left:0}.card li{position:relative;padding-left:26px}.card li::before{content:'✓';position:absolute;left:0;color:var(--blue-light)}.card.featured li::before{color:var(--purple-light)}.comparison{margin-top:90px}.comparison-heading{text-align:center;margin-bottom:26px}.order-layout{border-top:1px solid var(--border)}@media(max-width:600px){.plans{grid-template-columns:1fr}.plans>.card:nth-child(3){grid-column:auto}.hero .preview{margin-top:32px}}
-    @media(min-width:601px){.plans>.card:nth-child(3){grid-column:auto}}
+    @media (prefers-reduced-motion: reduce) {
+      html { scroll-behavior: auto; }
+      *, *::before, *::after { transition: none !important; }
+    }
   </style>
 </head>
 <body>
-<div class="wrap">
-  <nav class="nav" aria-label="Main navigation">
-    <a class="brand" href="/" aria-label="AVARA home"><span class="mark" aria-hidden="true">Λ</span> AVARA</a>
-    <div class="nav-links"><a href="#plans">Plans</a><a href="setup.html">Setup guide</a><a href="reviews.html">Reviews</a><a href="#order">Account</a><a href="#order" id="bag-link">Bag (0)</a></div>
+<a class="skip" href="#main">Skip to content</a>
+<header class="topbar">
+  <nav class="nav wrap" aria-label="Main">
+    <a class="brand" href="/" aria-label="AVARA home"><span class="mark" aria-hidden="true">Λ</span>AVARA</a>
+    <div class="nav-links">
+      <a href="#features">Features</a><a href="#plans">Plans</a><a href="#faq">FAQ</a><a href="setup.html">Setup guide</a><a href="reviews.html">Reviews</a>
+      <a class="keep" href="#account">Account</a><a class="btn" href="#download">Download</a>
+    </div>
   </nav>
-  <main>
-  <header class="hero">
-    <div class="hero-copy">
-      <div class="eyebrow">PERSONAL AI FOR WINDOWS AND MAC</div>
-      <h1>Your desktop. <span>Your AI.</span></h1>
-      <p>Plan your day, draft a presentation, or ask AVARA to help with what’s on your screen. Use your phone as a remote when you’re on the same Wi-Fi.</p>
-      <div class="hero-actions"><a class="btn" href="#plans">Explore plans</a><a class="btn secondary" href="#order">Sign in</a></div>
-    </div>
-    <figure class="preview">
-      <figcaption><strong>AVARA Command Center</strong><span>Product preview</span></figcaption>
-      <div class="preview-stage">
-        <div class="preview-orb" aria-hidden="true">Λ</div>
-        <p class="preview-prompt">“AVARA, help me plan my day.”</p>
+</header>
+
+<main id="main">
+  <div class="hero">
+    <div class="wrap hero-grid">
+      <div class="hero-copy">
+        <span class="pill">PERSONAL AI FOR WINDOWS AND MAC</span>
+        <h1>Your desktop.<span>Your AI.</span></h1>
+        <p class="hero-lead">Plan your day, draft a presentation, or ask AVARA to help with what’s on your screen. Use your phone as a remote when you’re on the same Wi-Fi.</p>
+        <div class="hero-actions"><a class="btn" href="#download">Download AVARA</a><a class="btn ghost" href="#plans">See plans</a></div>
+        <div class="platforms"><span>Windows 10 &amp; 11</span><span>Apple Silicon · macOS 14+</span><span>From ₹150 / month</span></div>
       </div>
-      <ul class="preview-tasks" aria-label="Example daily plan">
-        <li><span>Review today’s priorities</span><time datetime="09:00">9:00 AM</time></li>
-        <li><span>Focus time</span><time datetime="10:30">10:30 AM</time></li>
-        <li><span>Prepare presentation outline</span><time datetime="14:00">2:00 PM</time></li>
-      </ul>
-    </figure>
-  </header>
-  <section id="plans"><div class="eyebrow">FLEXIBLE AVARA PLANS</div><h2 class="section-title">Choose the access that fits you</h2><p class="fine">AVARA is available for Windows and Apple Silicon Macs (macOS 14 or later).</p><div class="plans">
-    <article class="card"><div class="eyebrow">AVARA BASIC · LAUNCH OFFER</div><div class="price"><span class="old-price">₹299</span> ₹150 <small>/ month</small></div><p class="fine">A capable everyday assistant.</p><ul><li>Desktop assistant and chat</li><li>Tasks, local calendar, reminders, and day planner</li><li>Study tools, scripts, and workout tracking</li><li>Phone remote on your private Wi-Fi</li><li>Standard AI usage allowance</li></ul><button class="btn choose" data-plan="Basic">Choose Basic</button></article>
-    <article class="card featured"><div class="eyebrow">AVARA PRO · LAUNCH OFFER</div><div class="price"><span class="old-price">₹599</span> ₹200 <small>/ month</small></div><p class="fine">The complete AVARA experience.</p><ul><li>Everything in Basic</li><li>Website and presentation creation</li><li>Google Workspace connections when configured</li><li>Higher AI and voice usage allowance</li><li>Priority support, with cloud backup coming soon</li></ul><button class="btn choose" data-plan="Pro">Choose Pro</button></article>
-    <article class="card"><div class="eyebrow">6-MONTH BASIC</div><div class="price">₹1,000 <small>/ 6 months</small></div><p class="fine">Basic access for 180 days with one payment.</p><ul><li>AVARA Basic features</li><li>Double the Basic screen, website and presentation allowances per activation</li><li>Priority support</li><li>Use your configured Groq, Gemini or Ollama models</li></ul><button class="btn choose" data-plan="6-Month Basic">Choose 6-Month Basic</button></article>
-    <article class="card featured"><div class="eyebrow">6-MONTH PRO</div><div class="price">₹1,400 <small>/ 6 months</small></div><p class="fine">Pro access for 180 days with one payment.</p><ul><li>AVARA Pro features</li><li>No AVARA-imposed screen understanding cap</li><li>Use larger supported AI models with your configured provider</li><li>Priority support</li></ul><button class="btn choose" data-plan="6-Month Pro">Choose 6-Month Pro</button></article>
-  </div>
-  <div class="comparison" aria-labelledby="comparison-title">
-    <div class="comparison-heading"><h3 id="comparison-title">Compare Basic and Pro</h3><p class="fine" id="comparison-hint">On small screens, scroll the table to see both plans.</p></div>
-    <div class="comparison-wrap" tabindex="0" role="region" aria-labelledby="comparison-title" aria-describedby="comparison-hint">
-      <table class="comparison-table">
-        <thead><tr><th scope="col">Feature</th><th scope="col">Basic<br><span class="fine"><s>₹299</s> ₹150/month</span></th><th scope="col">Pro<br><span class="fine"><s>₹599</s> ₹200/month</span></th></tr></thead>
-        <tbody>
-          <tr><td>Chat and local assistant</td><td class="yes">Yes</td><td class="yes">Yes</td></tr>
-          <tr><td>Tasks, calendar, and reminders</td><td class="yes">Yes</td><td class="yes">Yes</td></tr>
-          <tr><td>Gym, study, scripts, and planner</td><td class="yes">Yes</td><td class="yes">Yes</td></tr>
-          <tr><td>Phone Remote on home Wi-Fi</td><td class="yes">Yes</td><td class="yes">Yes</td></tr>
-          <tr><td>Screen understanding</td><td class="limited">Limited monthly usage</td><td>Higher fair-use allowance</td></tr>
-          <tr><td>Website Builder</td><td class="limited">Limited projects and exports</td><td>Full builder and priority generation</td></tr>
-          <tr><td>Presentations</td><td class="limited">Limited exports</td><td>Included</td></tr>
-          <tr><td>AI model access</td><td class="limited">Standard model and capped usage</td><td>Premium routing and larger usage</td></tr>
-          <tr><td>Google Workspace integration</td><td class="limited">Read-only or limited</td><td>Full enabled integrations</td></tr>
-          <tr><td>Cloud backup and sync</td><td>Not included</td><td>Included <span class="status-soon">COMING SOON</span></td></tr>
-          <tr><td>Priority support</td><td>Not included</td><td class="yes">Yes</td></tr>
-        </tbody>
-      </table>
-    </div>
-    <p class="fine comparison-note">Usage allowances and connected integrations depend on the active release and configured services. Cloud backup and sync will become available after its release.</p>
-  </div></section>
-  <section class="formbox order-layout" id="order" aria-labelledby="order-title">
-    <div class="order-intro">
-      <div class="eyebrow">ACCOUNT &amp; ORDERS</div>
-      <h2 id="order-title">Make AVARA yours</h2>
-      <p class="fine">Sign in to request a cash order, check approval, or download your purchased plan.</p>
-    </div>
-    <div>
-    <div id="account-panel">
-      <div class="auth-tabs" role="group" aria-label="Account mode">
-        <button class="btn" type="button" id="login-tab" aria-pressed="true">Sign in</button>
-        <button class="btn" type="button" id="signup-tab" aria-pressed="false">Sign up</button>
-      </div>
-      <form id="account-form">
-        <div class="formgrid">
-          <label id="name-field" hidden>Your name<input id="name" autocomplete="name" maxlength="100"></label>
-          <label>Email<input id="email" type="email" autocomplete="username" required maxlength="254"></label>
-          <label>Password<input id="password" type="password" autocomplete="current-password" required minlength="12" maxlength="128"></label>
-          <label id="confirm-field" hidden>Confirm password<input id="confirm" type="password" autocomplete="new-password" minlength="12" maxlength="128"></label>
+      <figure class="preview" aria-label="Preview of the AVARA app">
+        <div class="preview-bar"><i></i><i></i><i></i><span>AVARA · COMMAND CENTER</span></div>
+        <div class="preview-body">
+          <div class="orb" aria-hidden="true">Λ</div>
+          <p class="greeting">Good evening.</p>
+          <div class="chat">
+            <p class="bubble me">AVARA, help me plan my day.</p>
+            <div class="bubble ai">Here’s a plan around your calendar:
+              <ul class="plan-list">
+                <li><span>Review today’s priorities</span><time datetime="09:00">9:00</time></li>
+                <li><span>Focus time</span><time datetime="10:30">10:30</time></li>
+                <li><span>Prepare presentation outline</span><time datetime="14:00">14:00</time></li>
+              </ul>
+            </div>
+          </div>
+          <div class="composer" aria-hidden="true">Ask AVARA…<b>➤</b></div>
         </div>
-        <button class="btn" id="auth-submit" type="submit">Sign in</button>
-      </form>
+      </figure>
     </div>
-    <p id="signed-in" hidden></p>
-    <form id="order-form" hidden><div class="formgrid"><label>Plan<select id="plan" required><option value="">Select a plan</option><option>Basic — ₹150/month</option><option>Pro — ₹200/month</option><option>6-Month Basic — ₹1,000/6 months</option><option>6-Month Pro — ₹1,400/6 months</option></select></label><label>Operating system<select id="platform" required><option value="">Select an available system</option><option value="windows" disabled>Windows — temporarily unavailable</option><option value="mac">Mac — Apple Silicon</option></select></label><label>Optional add-on<select id="addon"><option>None</option><option>Setup assistance — discuss availability</option></select></label></div><p class="fine">Windows orders are paused during a security review. Mac requires Apple Silicon and macOS 14 or later.</p>
-      <label class="terms"><input id="accept" type="checkbox" required> I accept the <a href="terms.html" target="_blank" rel="noopener">Terms and Conditions</a> and <a href="privacy.html" target="_blank" rel="noopener">Privacy Notice</a>.</label>
-      <p class="fine">Payment method: cash. Payment and delivery arrangements are confirmed separately.</p>
-      <button class="btn" id="order-submit" type="submit">Request cash order</button>
-    </form>
-    <section class="customer-orders" id="customer-orders" hidden aria-labelledby="customer-orders-title"><div class="orders-top"><div><div class="eyebrow">DELIVERY CENTER</div><h3 id="customer-orders-title">Your orders</h3></div><button class="btn" type="button" id="refresh-orders">Refresh status</button></div><p class="fine">After AVARA approves your cash order, you will receive an email and your protected plan download will appear here. Read the <a href="setup.html">setup guide</a> before installing.</p><div class="orders-list" id="orders-list"></div></section>
-    <div class="notice" id="notice" role="status"></div>
+  </div>
+
+  <section id="how" aria-labelledby="how-title">
+    <div class="wrap">
+      <div class="section-head"><span class="eyebrow">How it works</span><h2 id="how-title">From download to ready in minutes</h2><p>One installer for everyone. You choose your plan inside AVARA and pay the AVARA owner directly.</p></div>
+      <ol class="steps">
+        <li class="step"><h3>Download &amp; install</h3><p>Windows: run the setup. Mac: open the DMG and drag AVARA to Applications.</p></li>
+        <li class="step"><h3>Choose your plan</h3><p>AVARA shows the plans and gives you a one-time code like <code>AVR-7F3K-92QD</code>.</p></li>
+        <li class="step"><h3>Send the code</h3><p>Send it to the AVARA owner on WhatsApp and pay by cash or UPI.</p></li>
+        <li class="step"><h3>You’re in</h3><p>AVARA unlocks automatically after approval and shows your plan and expiry.</p></li>
+      </ol>
     </div>
   </section>
-  </main>
-  <footer><div>© AVARA · <a href="terms.html">Terms</a> · <a href="privacy.html">Privacy</a> · <a href="setup.html">Setup guide</a></div><p class="fine">Orders and subscriptions become active only after approval. AI features require Ollama or compatible provider API keys.</p></footer>
-</div>
+  <hr class="divider">
+
+  <section id="features" aria-labelledby="features-title">
+    <div class="wrap">
+      <div class="section-head"><span class="eyebrow">What AVARA does</span><h2 id="features-title">An assistant that lives on your desktop</h2><p>Use your own Groq, Gemini or local Ollama models. Your settings and data stay on your computer.</p></div>
+      <div class="features">
+        <article class="feature"><div class="feature-top"><span class="icon" aria-hidden="true">✦</span></div><h3>Chat &amp; desktop assistant</h3><p>Ask questions, get help with what’s on your screen, and let AVARA handle desktop actions you approve.</p></article>
+        <article class="feature"><div class="feature-top"><span class="icon" aria-hidden="true">◷</span></div><h3>Plan your day</h3><p>Tasks, a local calendar, reminders and a day planner that builds a schedule around your commitments.</p></article>
+        <article class="feature"><div class="feature-top"><span class="icon" aria-hidden="true">✎</span></div><h3>Study &amp; focus</h3><p>Study tools, focus sessions, scripts and workout tracking in one place.</p></article>
+        <article class="feature"><div class="feature-top"><span class="icon" aria-hidden="true">◫</span><span class="tag">Pro</span></div><h3>Websites &amp; presentations</h3><p>Create websites and presentations from a prompt. Basic includes a limited monthly allowance.</p></article>
+        <article class="feature"><div class="feature-top"><span class="icon" aria-hidden="true">⌁</span></div><h3>Phone remote</h3><p>Send commands and open approved apps or sites on your computer from your phone on the same private Wi-Fi.</p></article>
+        <article class="feature"><div class="feature-top"><span class="icon" aria-hidden="true">＋</span></div><h3>Plugins</h3><p>Drag in a plugin file or create your own with the built-in prompt. AVARA checks it against its guidelines first.</p></article>
+      </div>
+    </div>
+  </section>
+  <hr class="divider">
+
+  <section id="plans" aria-labelledby="plans-title">
+    <div class="wrap">
+      <div class="section-head center"><span class="eyebrow">Plans</span><h2 id="plans-title">Choose the access that fits you</h2><p>The download is the same for every plan. Pick your plan inside AVARA after installing.</p></div>
+      <div class="plans">
+        <article class="plan"><span class="eyebrow">Basic · launch offer</span><h3>Basic</h3><div class="price"><s>₹299</s>₹150<small>/ month</small></div><ul><li>Desktop assistant and chat</li><li>Tasks, local calendar, reminders and day planner</li><li>Study tools, scripts and workout tracking</li><li>Phone remote on your private Wi-Fi</li><li>Standard AI usage allowance</li></ul><a class="btn" href="#download">Download AVARA</a></article>
+        <article class="plan pro"><span class="eyebrow">Pro · launch offer</span><h3>Pro</h3><div class="price"><s>₹599</s>₹200<small>/ month</small></div><ul><li>Everything in Basic</li><li>Website and presentation creation</li><li>Google Workspace connections when configured</li><li>Higher AI and voice usage allowance</li><li>Priority support, cloud backup coming soon</li></ul><a class="btn" href="#download">Download AVARA</a></article>
+        <article class="plan"><span class="eyebrow">6 months · one payment</span><h3>6-Month Basic</h3><div class="price">₹1,000<small>/ 6 months</small></div><ul><li>AVARA Basic for 180 days</li><li>Double the Basic screen, website and presentation allowances</li><li>Priority support</li><li>Your configured Groq, Gemini or Ollama models</li></ul><a class="btn" href="#download">Download AVARA</a></article>
+        <article class="plan pro"><span class="eyebrow">6 months · one payment</span><h3>6-Month Pro</h3><div class="price">₹1,400<small>/ 6 months</small></div><ul><li>AVARA Pro for 180 days</li><li>No AVARA-imposed screen understanding cap</li><li>Larger supported AI models with your provider</li><li>Priority support</li></ul><a class="btn" href="#download">Download AVARA</a></article>
+      </div>
+      <p class="fine plans-note">Payment is by cash or UPI to the AVARA owner. AI features use your own Groq or Gemini keys or a local Ollama model; provider charges are separate.</p>
+
+      <div class="compare" aria-labelledby="compare-title">
+        <h3 id="compare-title">Compare Basic and Pro</h3>
+        <div class="table-wrap" tabindex="0" role="region" aria-labelledby="compare-title">
+          <table>
+            <thead><tr><th scope="col">Feature</th><th scope="col">Basic<small>₹150 / month</small></th><th scope="col">Pro<small>₹200 / month</small></th></tr></thead>
+            <tbody>
+              <tr><td>Chat and local assistant</td><td class="yes">Yes</td><td class="yes">Yes</td></tr>
+              <tr><td>Tasks, calendar and reminders</td><td class="yes">Yes</td><td class="yes">Yes</td></tr>
+              <tr><td>Gym, study, scripts and planner</td><td class="yes">Yes</td><td class="yes">Yes</td></tr>
+              <tr><td>Phone remote on home Wi-Fi</td><td class="yes">Yes</td><td class="yes">Yes</td></tr>
+              <tr><td>Screen understanding</td><td>Limited monthly usage</td><td>Higher fair-use allowance</td></tr>
+              <tr><td>Website builder</td><td>Limited projects and exports</td><td>Full builder and priority generation</td></tr>
+              <tr><td>Presentations</td><td>Limited exports</td><td>Included</td></tr>
+              <tr><td>AI model access</td><td>Standard model and capped usage</td><td>Premium routing and larger usage</td></tr>
+              <tr><td>Google Workspace integration</td><td>Read-only or limited</td><td>Full enabled integrations</td></tr>
+              <tr><td>Cloud backup and sync</td><td>Not included</td><td>Included <span class="soon">Coming soon</span></td></tr>
+              <tr><td>Priority support</td><td>Not included</td><td class="yes">Yes</td></tr>
+            </tbody>
+          </table>
+        </div>
+        <p class="fine plans-note">Usage allowances and connected integrations depend on the active release and configured services.</p>
+      </div>
+    </div>
+  </section>
+
+  <section id="download" class="download-band" aria-labelledby="download-title">
+    <div class="wrap">
+      <div class="section-head center"><span class="eyebrow">Download</span><h2 id="download-title">Get AVARA</h2><p>One installer for every plan. Your plan is chosen inside AVARA after installing.</p></div>
+      <div class="downloads">
+        <article class="download-card" data-platform="windows"><span class="eyebrow">Windows</span><h3>AVARA for Windows</h3><p class="fine">Windows 10 or 11 (64-bit)</p><a class="btn" href="/download/windows" aria-disabled="true">Checking availability…</a><p class="fine detail"></p></article>
+        <article class="download-card" data-platform="mac"><span class="eyebrow">Mac</span><h3>AVARA for Mac</h3><p class="fine">Apple Silicon Mac, macOS 14 or later</p><a class="btn" href="/download/mac" aria-disabled="true">Checking availability…</a><p class="fine detail"></p></article>
+      </div>
+      <p class="fine plans-note">Read the <a href="setup.html">setup guide</a> for AI-provider setup, permissions and troubleshooting.</p>
+    </div>
+  </section>
+
+  <section id="faq" aria-labelledby="faq-title">
+    <div class="wrap">
+      <div class="section-head center"><span class="eyebrow">Questions</span><h2 id="faq-title">Good to know</h2></div>
+      <div class="faq">
+        <details><summary>How do I pay?</summary><p>Choose a plan inside AVARA to get a one-time code. Send the code to the AVARA owner on WhatsApp and pay by cash or UPI. AVARA unlocks as soon as the owner approves.</p></details>
+        <details><summary>Does AVARA work offline?</summary><p>AVARA checks your plan online and keeps a signed copy of the last answer, so it keeps working offline for up to 7 days (never past your plan’s expiry). Your AI provider may still need internet.</p></details>
+        <details><summary>Can I change my plan?</summary><p>Yes. Before approval, choosing another plan gives you a new code. Later, open your plan screen in AVARA and choose Renew or change plan.</p></details>
+        <details><summary>What do I need for the AI features?</summary><p>A Groq or Gemini API key, or Ollama installed on your computer for local models. Enter keys only in AVARA’s settings, never on this website.</p></details>
+        <details><summary>I have a new computer or reinstalled Windows.</summary><p>A new computer, or a reinstall that deletes AVARA’s data folder, needs a new code. Installing a new version over the old one on the same computer keeps your plan.</p></details>
+        <details><summary>Is my data private?</summary><p>Your chats, settings and files stay on your computer. For your plan, the AVARA server keeps only what it needs: a hashed code, the plan and its dates. See the <a href="privacy.html">privacy notice</a>.</p></details>
+      </div>
+    </div>
+  </section>
+  <hr class="divider">
+
+  <section id="account" aria-labelledby="account-title">
+    <div class="wrap">
+      <div class="section-head center"><span class="eyebrow">Account</span><h2 id="account-title">Your AVARA</h2><p>Optional: sign in to see your plan and expiry, leave a review, or reach earlier website orders.</p></div>
+      <div class="account">
+        <div id="account-panel">
+          <div class="tabs" role="group" aria-label="Account mode"><button type="button" id="login-tab" aria-pressed="true">Sign in</button><button type="button" id="signup-tab" aria-pressed="false">Create account</button></div>
+          <form id="account-form" class="form">
+            <label id="name-field" hidden>Your name<input id="name" autocomplete="name" maxlength="100"></label>
+            <label>Email<input id="email" type="email" autocomplete="username" required maxlength="254"></label>
+            <label>Password<input id="password" type="password" autocomplete="current-password" required minlength="12" maxlength="128"></label>
+            <label id="confirm-field" hidden>Confirm password<input id="confirm" type="password" autocomplete="new-password" minlength="12" maxlength="128"></label>
+            <button class="btn" id="auth-submit" type="submit">Sign in</button>
+          </form>
+        </div>
+        <p id="signed-in" class="signed-in" hidden></p>
+        <div class="block" id="my-avara" hidden>
+          <div class="block-head"><h3>Your plan</h3><button class="btn ghost" type="button" id="refresh-installations">Refresh</button></div>
+          <div class="list" id="installations-list"></div>
+          <form id="link-form" class="form"><label>Show a computer in this account<input id="link-code" autocomplete="off" spellcheck="false" maxlength="40" placeholder="Code shown in AVARA, e.g. AVR-7F3K-92QD" required></label><button class="btn ghost" type="submit">Add this computer</button></form>
+        </div>
+        <div class="block" id="customer-orders" hidden>
+          <div class="block-head"><h3>Earlier website orders</h3><button class="btn ghost" type="button" id="refresh-orders">Refresh</button></div>
+          <p class="fine">Orders placed before AVARA moved to one download. Their downloads keep working.</p>
+          <div class="list" id="orders-list"></div>
+        </div>
+        <div class="notice" id="notice" role="status" aria-live="polite"></div>
+      </div>
+    </div>
+  </section>
+</main>
+
+<footer>
+  <div class="wrap foot">
+    <a class="brand" href="/" aria-label="AVARA home"><span class="mark" aria-hidden="true">Λ</span>AVARA</a>
+    <nav aria-label="Footer"><a href="setup.html">Setup guide</a><a href="reviews.html">Reviews</a><a href="terms.html">Terms</a><a href="privacy.html">Privacy</a></nav>
+    <p class="fine">Plans become active only after the owner approves your code. AI features require Ollama or compatible provider API keys.</p>
+  </div>
+</footer>
+
 <script>
-document.querySelectorAll('.choose').forEach(b=>b.addEventListener('click',()=>{const plans={'Basic':'Basic — ₹150/month','Pro':'Pro — ₹200/month','6-Month Basic':'6-Month Basic — ₹1,000/6 months','6-Month Pro':'6-Month Pro — ₹1,400/6 months'};document.querySelector('#plan').value=plans[b.dataset.plan]||'';document.querySelector('#bag-link').textContent='Bag (1)';document.querySelector('#order').scrollIntoView({behavior:'smooth'});}));
 const field = id => document.getElementById(id);
 let signup = false;
-function notice(message) {
-  field('notice').style.display = message ? 'block' : 'none';
-  field('notice').textContent = message;
-}
+function notice(message) { field('notice').textContent = message || ''; }
 async function api(path, body) {
-  if (location.protocol === 'file:') throw new Error('Open the hosted storefront to use accounts and orders.');
+  if (location.protocol === 'file:') throw new Error('Open the hosted website to use accounts.');
   const options = {cache: 'no-store', signal: AbortSignal.timeout(15000)};
   if (body) Object.assign(options, {method: 'POST', headers: {'Content-Type': 'application/json'}, body: JSON.stringify(body)});
   const response = await fetch(path, options);
   const data = await response.json().catch(() => ({}));
-  if (!response.ok) {
-    const error = new Error(typeof data.detail === 'string' ? data.detail : 'Request failed. Check your entries and try again.');
-    error.status = response.status;
-    throw error;
-  }
+  if (!response.ok) { const error = new Error(typeof data.detail === 'string' ? data.detail : 'Request failed. Check your entries and try again.'); error.status = response.status; throw error; }
   return data;
 }
+function item(title, status, detail) {
+  const card = document.createElement('article'); card.className = 'item';
+  const text = document.createElement('div');
+  const heading = document.createElement('strong'); heading.textContent = title;
+  const state = document.createElement('span'); state.className = 'status'; state.textContent = status;
+  text.append(heading, state);
+  if (detail) { const extra = document.createElement('span'); extra.className = 'fine'; extra.textContent = detail; text.append(extra); }
+  card.append(text); return card;
+}
+const day = seconds => new Date(seconds * 1000).toLocaleDateString(undefined, {dateStyle: 'long'});
 function authMode(createAccount) {
   signup = createAccount;
-  for (const id of ['name', 'confirm']) {
-    field(id + '-field').hidden = !signup;
-    field(id).required = signup;
-  }
+  for (const id of ['name', 'confirm']) { field(id + '-field').hidden = !signup; field(id).required = signup; }
   field('password').autocomplete = signup ? 'new-password' : 'current-password';
   field('signup-tab').setAttribute('aria-pressed', String(signup));
   field('login-tab').setAttribute('aria-pressed', String(!signup));
   field('auth-submit').textContent = signup ? 'Create account' : 'Sign in';
 }
-async function loadOrders() {
-  const list = field('orders-list');
-  list.textContent = 'Loading your orders…';
+async function loadInstallations() {
+  const list = field('installations-list'); list.textContent = 'Loading your plan…';
   try {
-    const result = await api('/api/orders');
-    list.textContent = '';
-    if (!result.orders.length) {
-      list.textContent = 'You have not requested an order yet.';
-      return;
+    const result = await api('/api/account/installations'); list.textContent = '';
+    const labels = {active: 'Active', paused: 'Paused', cancelled: 'Cancelled', expired: 'Expired'};
+    for (const row of result.installations) {
+      const where = row.platform === 'mac' ? 'Mac' : row.platform === 'windows' ? 'Windows' : 'Computer';
+      list.append(item('AVARA ' + row.plan_name + ' · ' + where, (labels[row.state] || row.state) + (row.state === 'active' ? ' until ' + day(row.expires_at) : ' · ended ' + day(row.expires_at))));
     }
-    result.orders.forEach(order => {
-      const card = document.createElement('article');
-      card.className = 'order-card';
-      const details = document.createElement('div');
-      const title = document.createElement('strong');
-      title.textContent = 'Order #' + order.id + ' · ' + order.plan + ' · ' + (order.platform === 'mac' ? 'Mac' : 'Windows');
-      const status = document.createElement('span');
-      status.className = 'order-status';
-      status.textContent = order.status === 'superseded' ? 'Replaced by a newer order' : order.status === 'approved' ? 'Approved and ready' : 'Awaiting approval';
-      const email = document.createElement('span');
-      email.className = 'fine';
-      email.textContent = order.status === 'superseded' ? 'This installation now uses its newer approved order.' : order.status === 'approved' ? 'Delivery email: ' + order.delivery_email_status : 'You will be emailed after approval.';
-      details.append(title, status, email);
-      card.append(details);
-      if (order.download_ready) {
-        const download = document.createElement('a');
-        download.className = 'btn';
-        download.href = '/api/order/' + order.id + '/download';
-        download.textContent = 'Download AVARA for ' + (order.platform === 'mac' ? 'Mac' : 'Windows');
-        if (order.platform === 'mac') { const hint=document.createElement('p'); hint.className='fine'; hint.textContent='Mac: Apple Silicon (M1 or newer), macOS 14 or later.'; card.append(hint); }
-        card.append(download);
-      } else if (order.status === 'approved') {
-        const unavailable = document.createElement('span');
-        unavailable.className = 'fine';
-        unavailable.textContent = 'Release file temporarily unavailable';
-        card.append(unavailable);
-      }
+    for (const row of result.pending) list.append(item(row.plan_name + ' · ₹' + Number(row.price_inr).toLocaleString('en-IN'), 'Waiting for owner approval', 'Code valid until ' + day(row.code_expires)));
+    if (!list.children.length) list.textContent = 'No computer is linked yet. Enter the code shown in AVARA below to see its plan here.';
+  } catch (error) { list.textContent = error.message; }
+}
+async function loadOrders() {
+  const list = field('orders-list'); list.textContent = 'Loading…';
+  try {
+    const result = await api('/api/orders'); list.textContent = '';
+    if (!result.orders.length) { field('customer-orders').hidden = true; return; }
+    field('customer-orders').hidden = false;
+    for (const order of result.orders) {
+      const status = order.status === 'superseded' ? 'Replaced by a newer order' : order.status === 'approved' ? 'Approved' : 'Awaiting approval';
+      const card = item('Order #' + order.id + ' · ' + order.plan + ' · ' + (order.platform === 'mac' ? 'Mac' : 'Windows'), status);
+      if (order.download_ready) { const link = document.createElement('a'); link.className = 'btn ghost'; link.href = '/api/order/' + order.id + '/download'; link.textContent = 'Download'; card.append(link); }
       list.append(card);
-    });
-  } catch (error) {
-    list.textContent = error.message;
-  }
+    }
+  } catch (error) { list.textContent = error.message; }
 }
 function showSession(name) {
   field('account-panel').hidden = Boolean(name);
-  field('order-form').hidden = !name;
-  field('customer-orders').hidden = !name;
+  field('my-avara').hidden = !name;
   field('signed-in').hidden = !name;
   field('signed-in').textContent = name ? 'Signed in as ' + name : '';
-  field('password').value = '';
-  field('confirm').value = '';
-  if (name) loadOrders();
+  if (!name) field('customer-orders').hidden = true;
+  field('password').value = ''; field('confirm').value = '';
+  if (name) { loadInstallations(); loadOrders(); }
+}
+async function loadDownloads() {
+  try {
+    const result = await api('/api/downloads');
+    for (const card of document.querySelectorAll('.download-card')) {
+      const info = result.platforms[card.dataset.platform] || {};
+      const link = card.querySelector('.btn'), detail = card.querySelector('.detail');
+      link.setAttribute('aria-disabled', String(!info.available));
+      link.textContent = info.available ? 'Download for ' + (card.dataset.platform === 'mac' ? 'Mac' : 'Windows') : 'Not available yet';
+      detail.textContent = info.available ? (result.version ? 'Version ' + result.version + ' · ' : '') + Math.round(info.size / 1048576) + ' MB' : (info.message || '');
+    }
+  } catch {
+    document.querySelectorAll('.download-card .btn').forEach(link => { link.textContent = 'Not available right now'; });
+  }
 }
 field('refresh-orders').onclick = loadOrders;
+field('refresh-installations').onclick = loadInstallations;
 field('signup-tab').onclick = () => { authMode(true); notice(''); };
 field('login-tab').onclick = () => { authMode(false); notice(''); };
 field('account-form').onsubmit = async event => {
   event.preventDefault();
-  const button = field('auth-submit');
-  if (button.disabled) return;
+  const button = field('auth-submit'); if (button.disabled) return;
   const data = {email: field('email').value, password: field('password').value};
   const creating = signup;
-  if (creating) {
-    if (data.password !== field('confirm').value) return notice('Passwords do not match.');
-    data.name = field('name').value;
-  }
+  if (creating) { if (data.password !== field('confirm').value) return notice('Passwords do not match.'); data.name = field('name').value; }
   button.disabled = field('signup-tab').disabled = field('login-tab').disabled = true;
   notice(creating ? 'Creating account…' : 'Signing in…');
   try {
     const result = await api(creating ? '/api/account' : '/api/login', data);
-    if (creating) authMode(false);
-    showSession(result.name);
-    notice(creating ? result.message : '');
-  } catch (error) {
-    if (creating && error.status === 409) authMode(false);
-    notice(error.message);
-  } finally {
-    button.disabled = field('signup-tab').disabled = field('login-tab').disabled = false;
-  }
+    if (creating) { authMode(false); notice(result.message); } else { showSession(result.name); notice(''); }
+  } catch (error) { if (creating && error.status === 409) authMode(false); notice(error.message); }
+  finally { button.disabled = field('signup-tab').disabled = field('login-tab').disabled = false; }
 };
-async function reportOrder(result) {
-  const messages = {
-    pending: 'Checking the owner email notification…',
-    accepted: 'The email provider accepted the owner notification.',
-    failed: 'The email provider rejected the notification.',
-    disabled: 'The owner email notification is unavailable.',
-    unconfirmed: 'The owner email notification could not be confirmed.',
-  };
-  let status = result.notification;
-  notice([result.message, messages[status]].filter(Boolean).join(' '));
-  const deadline = Date.now() + 20000;
-  while (status === 'pending' && Date.now() < deadline) {
-    await new Promise(resolve => setTimeout(resolve, 1200));
-    try {
-      status = (await api('/api/order/' + result.order_id + '/notification')).status;
-    } catch {
-      status = 'unconfirmed';
-    }
-  }
-  if (status) notice(result.message + ' ' + (status === 'pending' ? messages.unconfirmed : messages[status]));
-}
-field('order-form').onsubmit = async event => {
+field('link-form').onsubmit = async event => {
   event.preventDefault();
-  const button = field('order-submit');
-  if (button.disabled) return;
-  button.disabled = true;
-  notice('Saving your cash order…');
-  try {
-    const result = await api('/api/order', {plan: field('plan').value, platform: field('platform').value, addon: field('addon').value, accepted: field('accept').checked});
-    field('accept').checked = false;
-    await reportOrder(result);
-    await loadOrders();
-  } catch (error) {
-    if (error.status === 401) showSession(null);
-    notice(error.status ? error.message : 'Could not confirm the order. Check with AVARA before submitting again.');
-  } finally {
-    button.disabled = false;
-  }
+  try { const result = await api('/api/account/link-installation', {code: field('link-code').value}); field('link-code').value = ''; notice(result.message); loadInstallations(); }
+  catch (error) { if (error.status === 401) showSession(null); notice(error.message); }
 };
+// Easter egg: five quick clicks on the footer logo, or typing "owner", opens the owner page.
+// It is only a shortcut; the owner page still asks for the private owner key.
+(() => {
+  const logo = document.querySelector('footer .brand');
+  let clicks = [], typed = '';
+  logo?.addEventListener('click', event => {
+    event.preventDefault();
+    const now = Date.now();
+    clicks = clicks.filter(time => now - time < 3000).concat(now);
+    if (clicks.length >= 5) location.href = '/owner';
+    else if (clicks.length === 1) scrollTo({top: 0, behavior: matchMedia('(prefers-reduced-motion: reduce)').matches ? 'auto' : 'smooth'});
+  });
+  document.addEventListener('keydown', event => {
+    if (event.target.closest('input, textarea, select, [contenteditable]') || event.key.length !== 1) return;
+    typed = (typed + event.key.toLowerCase()).slice(-5);
+    if (typed === 'owner') location.href = '/owner';
+  });
+})();
 if (location.protocol !== 'file:') {
-  api('/api/session').then(result => {
-    if (!field('auth-submit').disabled) showSession(result.name);
-  }).catch(() => {});
+  loadDownloads();
+  api('/api/session').then(result => { if (!field('auth-submit').disabled) showSession(result.name); }).catch(() => {});
 }
 </script>
-<script src="/reward.js?v=1" defer></script></body></html>
+<script src="/reward.js?v=1" defer></script>
+</body>
+</html>

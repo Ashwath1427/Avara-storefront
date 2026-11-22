@@ -19,8 +19,13 @@ from contextlib import asynccontextmanager, contextmanager
 from pathlib import Path
 
 from fastapi import BackgroundTasks, FastAPI, HTTPException, Request, Response
-from fastapi.responses import FileResponse, StreamingResponse
+from fastapi.responses import FileResponse, JSONResponse, StreamingResponse
 from pydantic import BaseModel, Field
+
+try:  # Imported as storefront.server in tests, as server on Render.
+    from . import licensing
+except ImportError:
+    import licensing
 
 ROOT = Path(__file__).resolve().parent
 DB_PATH = os.environ.get('AVARA_STORE_DB', str(ROOT / 'store.db'))
@@ -61,6 +66,10 @@ def check_postgres_schema():
         con.execute('ALTER TABLE reviews ENABLE ROW LEVEL SECURITY')
         con.execute('REVOKE ALL ON reviews FROM PUBLIC, anon, authenticated, service_role')
         con.execute('REVOKE ALL ON SEQUENCE reviews_id_seq FROM PUBLIC, anon, authenticated, service_role')
+        # Universal licensing tables come only from storefront/migrations. Until
+        # they exist the legacy activation check keeps working unchanged.
+        if not licensing_ready(con):
+            logger.warning('Universal licensing tables are missing. Run storefront/migrations before using the new app flow.')
 
 
 @asynccontextmanager
@@ -105,6 +114,9 @@ def postgres_connection():
     con = StorePostgresConnection.connect(
         DATABASE_URL,
         connect_timeout=8,
+        # Short-lived connections; server-side prepared statements break behind
+        # Supabase's transaction pooler and gain nothing here.
+        prepare_threshold=None,
         sslmode='verify-full',
         sslrootcert=str(SUPABASE_CA_PATH),
     )
@@ -137,7 +149,61 @@ def db():
         con.execute("ALTER TABLE orders ADD COLUMN platform TEXT NOT NULL DEFAULT 'windows'")
     if 'deleted_at' not in columns:
         con.execute('ALTER TABLE orders ADD COLUMN deleted_at INTEGER')
+    con.executescript(SQLITE_LICENSING_SCHEMA)
+    con.executemany(
+        'INSERT INTO plans(id,name,tier,price_inr,term_days,six_month,active,sort,legacy_label) '
+        'VALUES (?,?,?,?,?,?,1,?,?) ON CONFLICT(id) DO NOTHING',
+        [(p['id'], p['name'], p['tier'], p['price_inr'], p['term_days'], int(p['six_month']), p['sort'], p['legacy_label'])
+         for p in licensing.DEFAULT_PLANS],
+    )
+    con.commit()
     return con
+
+
+# Local/test schema. Production Postgres uses storefront/migrations/*.sql, which
+# define the same tables in the private avara_store schema.
+SQLITE_LICENSING_SCHEMA = '''
+CREATE TABLE IF NOT EXISTS plans (
+  id TEXT PRIMARY KEY, name TEXT NOT NULL, tier TEXT NOT NULL CHECK(tier IN ('basic','pro')),
+  price_inr INTEGER NOT NULL CHECK(price_inr >= 0), term_days INTEGER NOT NULL CHECK(term_days > 0),
+  six_month INTEGER NOT NULL DEFAULT 0 CHECK(six_month IN (0,1)), active INTEGER NOT NULL DEFAULT 1 CHECK(active IN (0,1)),
+  sort INTEGER NOT NULL DEFAULT 0, legacy_label TEXT);
+CREATE TABLE IF NOT EXISTS app_installations (
+  id TEXT PRIMARY KEY, token_hash TEXT NOT NULL UNIQUE, legacy_code TEXT NOT NULL UNIQUE,
+  platform TEXT NOT NULL DEFAULT 'unknown', app_version TEXT, user_id INTEGER REFERENCES users(id),
+  created INTEGER NOT NULL, last_seen INTEGER NOT NULL);
+CREATE TABLE IF NOT EXISTS activation_codes (
+  code_hash TEXT PRIMARY KEY, installation_id TEXT NOT NULL REFERENCES app_installations(id),
+  nonce TEXT NOT NULL, hint TEXT NOT NULL,
+  status TEXT NOT NULL DEFAULT 'pending' CHECK(status IN ('pending','approved','rejected','superseded')),
+  created INTEGER NOT NULL, expires_at INTEGER NOT NULL, used_at INTEGER);
+CREATE INDEX IF NOT EXISTS activation_codes_installation_idx ON activation_codes(installation_id, created);
+CREATE TABLE IF NOT EXISTS license_orders (
+  id INTEGER PRIMARY KEY, installation_id TEXT NOT NULL REFERENCES app_installations(id),
+  plan_id TEXT NOT NULL REFERENCES plans(id), price_inr INTEGER NOT NULL,
+  status TEXT NOT NULL DEFAULT 'pending' CHECK(status IN ('pending','approved','rejected','superseded')),
+  code_hash TEXT NOT NULL UNIQUE REFERENCES activation_codes(code_hash), created INTEGER NOT NULL,
+  decided_at INTEGER, decided_by TEXT, payment_method TEXT NOT NULL DEFAULT 'manual', payment_reference TEXT, note TEXT);
+CREATE INDEX IF NOT EXISTS license_orders_installation_idx ON license_orders(installation_id, id);
+CREATE TABLE IF NOT EXISTS entitlements (
+  id INTEGER PRIMARY KEY, installation_id TEXT UNIQUE REFERENCES app_installations(id), legacy_code TEXT UNIQUE,
+  plan_id TEXT NOT NULL REFERENCES plans(id), tier TEXT NOT NULL CHECK(tier IN ('basic','pro')),
+  six_month INTEGER NOT NULL DEFAULT 0 CHECK(six_month IN (0,1)),
+  state TEXT NOT NULL CHECK(state IN ('active','paused','cancelled')),
+  starts_at INTEGER NOT NULL, expires_at INTEGER NOT NULL, paused_at INTEGER,
+  source_order_id INTEGER REFERENCES license_orders(id), legacy_order_id INTEGER REFERENCES orders(id),
+  updated_at INTEGER NOT NULL, CHECK(installation_id IS NOT NULL OR legacy_code IS NOT NULL));
+CREATE TABLE IF NOT EXISTS audit_log (
+  id INTEGER PRIMARY KEY, at INTEGER NOT NULL, actor TEXT NOT NULL, action TEXT NOT NULL,
+  target TEXT, detail TEXT, ip TEXT);
+CREATE TABLE IF NOT EXISTS owner_sessions (
+  token_hash TEXT PRIMARY KEY, created INTEGER NOT NULL, expires INTEGER NOT NULL, ip TEXT);
+CREATE TABLE IF NOT EXISTS rate_limits (
+  bucket TEXT NOT NULL, window_start INTEGER NOT NULL, hits INTEGER NOT NULL, PRIMARY KEY(bucket, window_start));
+CREATE TABLE IF NOT EXISTS email_log (
+  id INTEGER PRIMARY KEY, at INTEGER NOT NULL, user_id INTEGER, to_email TEXT NOT NULL, kind TEXT NOT NULL,
+  subject TEXT NOT NULL, status TEXT NOT NULL, error TEXT, ref TEXT);
+'''
 
 class Credentials(BaseModel):
     email: str = Field(min_length=3, max_length=254)
@@ -161,14 +227,54 @@ def session(request: Request):
     return row
 
 
-def owner_session(request: Request):
+OWNER_COOKIE = 'avara_owner_session'
+OWNER_SESSION_SECONDS = 12 * 3600
+
+
+def owner_key():
     expected = os.getenv('AVARA_STORE_ADMIN_KEY', '').strip()
     if len(expected) < 24:
         raise HTTPException(503, 'Owner approval is not configured.')
-    authorization = request.headers.get('Authorization', '')
-    supplied = authorization[7:] if authorization.startswith('Bearer ') else ''
-    if not supplied or not hmac.compare_digest(supplied, expected):
-        raise HTTPException(401, 'Owner key is incorrect.')
+    return expected
+
+
+def owner_csrf(session_token: str) -> str:
+    """CSRF token bound to one owner session; recomputed, never stored."""
+    return hmac.new(session_token.encode(), b'avara-owner-csrf-v1', hashlib.sha256).hexdigest()
+
+
+def owner_session(request: Request):
+    """Authorize an owner action and return the actor name for the audit log.
+
+    Browsers use the HttpOnly owner-session cookie and must echo the session's
+    CSRF token in X-CSRF-Token for every state-changing request. Scripts may
+    still send the owner key as a Bearer header, which browsers never attach
+    automatically, so it is not exposed to CSRF.
+    """
+    expected = owner_key()
+    headers = getattr(request, 'headers', {}) or {}
+    authorization = headers.get('Authorization', '') or headers.get('authorization', '')
+    if authorization:
+        supplied = authorization[7:] if authorization.startswith('Bearer ') else ''
+        if not supplied or not hmac.compare_digest(supplied, expected):
+            raise HTTPException(401, 'Owner key is incorrect.')
+        return 'owner:key'
+    token = (getattr(request, 'cookies', None) or {}).get(OWNER_COOKIE, '')
+    if not token or len(token) > 128:
+        raise HTTPException(401, 'Owner sign-in required.')
+    token_digest = hashlib.sha256(token.encode()).hexdigest()
+    with db() as con:
+        if not licensing_ready(con):
+            raise HTTPException(401, 'Owner sign-in required.')
+        row = con.execute('SELECT created FROM owner_sessions WHERE token_hash=? AND expires>?',
+                          (token_digest, int(time.time()))).fetchone()
+    if not row:
+        raise HTTPException(401, 'Your owner session expired. Sign in again.')
+    if str(getattr(request, 'method', 'GET')).upper() not in ('GET', 'HEAD', 'OPTIONS'):
+        supplied = headers.get('x-csrf-token', '') or headers.get('X-CSRF-Token', '')
+        if not supplied or not hmac.compare_digest(supplied, owner_csrf(token)):
+            raise HTTPException(403, 'Security check failed. Reload the owner page and try again.')
+    return 'owner:session:' + token_digest[:8]
 
 
 def plan_slug(plan: str):
@@ -215,7 +321,7 @@ def activation_table(con):
 
 @app.post('/api/admin/order/{order_id}/activate')
 def activate_installation(order_id: int, data: ActivationApproval, request: Request):
-    owner_session(request)
+    actor = owner_session(request)
     edition, _, digits = data.code.strip().upper().partition('-')
     code = digits.replace('-', '')
     if not re.fullmatch(r'[0-9A-F]{32}', code):
@@ -253,6 +359,9 @@ def activate_installation(order_id: int, data: ActivationApproval, request: Requ
             )
             # The old paid order remains in history but cannot activate a second device.
             con.execute("UPDATE orders SET status='superseded' WHERE id=?", (existing[0],))
+            sync_legacy_entitlement(con, code)
+            audit(con, actor, 'legacy_installation_replaced', f'order:{order_id}',
+                  {'previous_order': existing[0], 'plan': plan, 'term_days': term_days}, client_ip(request))
             return {'message': f'Existing installation updated to AVARA {plan.title()} for {term_days} days using order #{order_id}. The app will refresh at its next license check.'}
         inserted = con.execute(
             'INSERT INTO installations(code,order_id,plan,expires,state,paused_at) VALUES (?,?,?,?,?,?) ON CONFLICT DO NOTHING',
@@ -260,6 +369,9 @@ def activate_installation(order_id: int, data: ActivationApproval, request: Requ
         )
         if not inserted.rowcount:
             raise HTTPException(409, 'This activation code or order has already been used.')
+        sync_legacy_entitlement(con, code)
+        audit(con, actor, 'legacy_installation_activated', f'order:{order_id}',
+              {'plan': plan, 'term_days': term_days}, client_ip(request))
     return {'message': f'AVARA {plan.title()} activated for {term_days} days.'}
 
 
@@ -269,6 +381,21 @@ def check_installation(data: InstallationCheck, response: Response):
     code = hashlib.sha256(bytes.fromhex(data.token)).hexdigest()[:32].upper()
     with db() as con:
         activation_table(con)
+        if licensing_ready(con):
+            # Entitlements are the source of truth once migrated; old installed
+            # copies keep receiving the same unsigned answer format as before.
+            entitlement = con.execute(
+                '''SELECT tier, expires_at, state, six_month FROM entitlements
+                   WHERE legacy_code=? OR installation_id=? ORDER BY updated_at DESC LIMIT 1''',
+                (code, licensing.installation_id(data.token)),
+            ).fetchone()
+            if entitlement:
+                tier, expires, state, six_month = entitlement
+                if state != 'active':
+                    return {'status': state, 'plan': tier, 'expires': expires}
+                if expires <= time.time():
+                    return {'status': 'expired'}
+                return {'status': 'active', 'plan': tier, 'expires': expires, 'six_month': bool(six_month)}
         row = con.execute(
             '''SELECT installations.plan, installations.expires, installations.state, orders.plan, orders.deleted_at
                FROM installations JOIN orders ON orders.id=installations.order_id
@@ -288,7 +415,7 @@ def check_installation(data: InstallationCheck, response: Response):
 
 @app.post('/api/admin/order/{order_id}/subscription')
 def change_subscription(order_id: int, data: SubscriptionChange, request: Request):
-    owner_session(request)
+    actor = owner_session(request)
     now = int(time.time())
     with db() as con:
         activation_table(con)
@@ -334,6 +461,8 @@ def change_subscription(order_id: int, data: SubscriptionChange, request: Reques
             new_expiry = max(now, expires) + 30 * 86400
             con.execute('UPDATE installations SET expires=? WHERE order_id=?', (new_expiry, order_id))
             message = 'Activation extended by 30 days.'
+        sync_legacy_order(con, order_id)
+        audit(con, actor, 'legacy_subscription_' + data.action, f'order:{order_id}', {'plan': data.plan}, client_ip(request))
     return {'message': message}
 
 
@@ -395,7 +524,7 @@ def release_catalog():
 
 @app.post('/api/admin/releases/publish-catalog')
 def publish_release_catalog(request: Request):
-    owner_session(request)
+    actor = owner_session(request)
     if not installer_downloads() or not PART_RELEASE.get('enabled'):
         raise HTTPException(409, 'Native installer delivery must be enabled first.')
     for platform in INSTALLER_FILES:
@@ -415,6 +544,7 @@ def publish_release_catalog(request: Request):
     except (HTTPError, OSError, ValueError):
         raise HTTPException(503, 'Could not sync the private release catalog. Try again.')
     count = len(release_catalog()['downloads'])
+    record(actor, 'release_catalog_published', 'release-catalog.json', {'downloads': count}, client_ip(request))
     return {'message': f'Release catalog synced to Supabase: {count} available plan downloads using shared installer parts.'}
 
 
@@ -427,17 +557,20 @@ def plan_bundle(plan: str, platform: str = 'windows'):
 
 
 def storage_request(plan: str, method='GET', platform: str = 'windows', object_name: str | None = None):
+    if object_name is None:
+        slug = plan_slug(plan)
+        filename = plan_filename(plan, platform)
+        suffix = '_MAC' if platform == 'mac' else ''
+        object_name = filename if installer_downloads() else os.getenv(f'AVARA_{slug.upper()}{suffix}_STORAGE_OBJECT', filename).strip()
+    return storage_object_request(object_name, method)
+
+
+def storage_object_request(object_name: str, method='GET'):
+    """Private Supabase Storage request for one object; the service key never leaves the server."""
     url = os.getenv('SUPABASE_URL', '').strip().rstrip('/')
     key = os.getenv('SUPABASE_SERVICE_ROLE_KEY', '').strip()
     bucket = os.getenv('AVARA_RELEASE_BUCKET', 'avara-releases').strip()
-    if not url or not key or not bucket:
-        return None
-    slug = plan_slug(plan)
-    filename = plan_filename(plan, platform)
-    suffix = '_MAC' if platform == 'mac' else ''
-    if object_name is None:
-        object_name = filename if installer_downloads() else os.getenv(f'AVARA_{slug.upper()}{suffix}_STORAGE_OBJECT', filename).strip()
-    if not object_name:
+    if not url or not key or not bucket or not object_name:
         return None
     headers = {'apikey': key, 'Cache-Control': 'no-store'}
     if not key.startswith('sb_secret_'):
@@ -701,10 +834,11 @@ class ReviewModeration(BaseModel):
 
 @app.post('/api/admin/review/{review_id}')
 def moderate_review(review_id: int, data: ReviewModeration, request: Request):
-    owner_session(request)
+    actor = owner_session(request)
     with db() as con:
         if not con.execute('UPDATE reviews SET status=? WHERE id=?', (data.status, review_id)).rowcount:
             raise HTTPException(404, 'Review not found.')
+        audit(con, actor, 'review_' + data.status, f'review:{review_id}', None, client_ip(request))
     return {'message': 'Review ' + data.status + '.'}
 
 @app.post('/api/account')
@@ -917,27 +1051,31 @@ def admin_orders(request: Request, include_deleted: bool = False):
 
 @app.post('/api/admin/order/{order_id}/delete')
 def delete_order(order_id: int, request: Request):
-    owner_session(request)
+    actor = owner_session(request)
     with db() as con:
         if not con.execute('SELECT 1 FROM orders WHERE id=?', (order_id,)).fetchone():
             raise HTTPException(404, 'Order not found.')
         con.execute('UPDATE orders SET deleted_at=? WHERE id=? AND deleted_at IS NULL', (int(time.time()), order_id))
+        sync_legacy_order(con, order_id)
+        audit(con, actor, 'legacy_order_deleted', f'order:{order_id}', None, client_ip(request))
     return {'message': f'Order #{order_id} deleted. Downloads and activation are blocked. You can restore it from Show deleted orders.'}
 
 
 @app.post('/api/admin/order/{order_id}/restore')
 def restore_order(order_id: int, request: Request):
-    owner_session(request)
+    actor = owner_session(request)
     with db() as con:
         if not con.execute('SELECT 1 FROM orders WHERE id=?', (order_id,)).fetchone():
             raise HTTPException(404, 'Order not found.')
         con.execute('UPDATE orders SET deleted_at=NULL WHERE id=?', (order_id,))
+        sync_legacy_order(con, order_id)
+        audit(con, actor, 'legacy_order_restored', f'order:{order_id}', None, client_ip(request))
     return {'message': f'Order #{order_id} restored. Its previous approval and subscription dates are unchanged.'}
 
 
 @app.post('/api/admin/order/{order_id}/approve')
 def approve_order(order_id: int, request: Request, background_tasks: BackgroundTasks):
-    owner_session(request)
+    actor = owner_session(request)
     transport = email_transport()
     if not transport:
         raise HTTPException(503, 'Customer email delivery is not configured.')
@@ -960,6 +1098,7 @@ def approve_order(order_id: int, request: Request, background_tasks: BackgroundT
         )
         if not updated.rowcount:
             return {'message': f'Order #{order_id} is already approved.', 'status': 'approved'}
+        audit(con, actor, 'legacy_order_approved', f'order:{order_id}', {'plan': plan}, client_ip(request))
     public_url = os.getenv('AVARA_STORE_PUBLIC_URL', '').strip().rstrip('/') or str(request.base_url).rstrip('/')
     background_tasks.add_task(_deliver_ready_email, order_id, name, email, plan, public_url, transport)
     background_tasks.add_task(_update_supabase_order_status, order_id, 'approved', approved_at)
@@ -1096,3 +1235,1111 @@ def reward_unlock(data: RewardUnlock, request: Request):
     if error:
         raise HTTPException(*error)
     return receipt
+
+
+# =============================================================================
+# Universal installer licensing
+#
+# One installer per OS. The app registers its installation, the server creates
+# a pending order and a short one-time code, the owner approves the code after
+# manual payment, and the app receives an Ed25519-signed ticket. A payment
+# provider can later approve through grant_license_order() without changing
+# codes, orders, entitlements or tickets.
+# =============================================================================
+
+_licensing_state = {'ready': False, 'checked': 0.0}
+_signing_cache = {}
+
+
+class LicenseError(Exception):
+    def __init__(self, status: int, message: str, reason: str = 'error'):
+        super().__init__(message)
+        self.status, self.message, self.reason = status, message, reason
+
+
+def licensing_ready(con) -> bool:
+    """SQLite creates the tables itself; Postgres needs the migrations applied."""
+    if isinstance(con, sqlite3.Connection) or _licensing_state['ready']:
+        return True
+    if _licensing_state['checked'] and time.monotonic() - _licensing_state['checked'] < 30:
+        return False
+    row = con.execute(
+        "SELECT to_regclass('avara_store.entitlements') IS NOT NULL AND to_regclass('avara_store.audit_log') IS NOT NULL "
+        "AND to_regclass('avara_store.rate_limits') IS NOT NULL AND to_regclass('avara_store.owner_sessions') IS NOT NULL "
+        "AND to_regclass('avara_store.email_log') IS NOT NULL"
+    ).fetchone()
+    _licensing_state.update(ready=bool(row and row[0]), checked=time.monotonic())
+    return _licensing_state['ready']
+
+
+def require_licensing(con):
+    if not licensing_ready(con):
+        raise HTTPException(503, 'Activation service is being upgraded. Try again shortly.')
+
+
+def client_ip(request) -> str:
+    headers = getattr(request, 'headers', {}) or {}
+    if os.getenv('RENDER') == 'true' or os.getenv('AVARA_TRUST_PROXY_HEADERS') == '1':
+        forwarded = headers.get('x-forwarded-for', '') or headers.get('X-Forwarded-For', '')
+        if forwarded:
+            return forwarded.split(',')[0].strip()[:64]
+    client = getattr(request, 'client', None)
+    return str(getattr(client, 'host', None) or 'unknown')[:64]
+
+
+def audit(con, actor: str, action: str, target=None, detail=None, ip=None):
+    """Append-only owner/security audit entry inside the caller's transaction."""
+    if not licensing_ready(con):
+        logger.warning('Audit log unavailable; %s %s %s', actor, action, target)
+        return
+    con.execute('INSERT INTO audit_log(at,actor,action,target,detail,ip) VALUES (?,?,?,?,?,?)',
+                (int(time.time()), actor[:80], action[:80], (str(target)[:160] if target is not None else None),
+                 json.dumps(detail, sort_keys=True)[:2000] if detail is not None else None, ip))
+
+
+def record(actor: str, action: str, target=None, detail=None, ip=None):
+    """Audit in its own transaction, for refusals that roll back the main one."""
+    try:
+        with db() as con:
+            audit(con, actor, action, target, detail, ip)
+    except Exception as exc:  # Never turn an audit failure into a crash of the real response.
+        logger.warning('Audit write failed (%s)', type(exc).__name__)
+
+
+def rate_limit(bucket: str, limit: int, window: int):
+    """Fixed-window limiter shared by every server worker through the database."""
+    now = int(time.time())
+    start = now - now % window
+    with db() as con:
+        if not licensing_ready(con):
+            return
+        con.execute(
+            'INSERT INTO rate_limits(bucket,window_start,hits) VALUES (?,?,1) '
+            'ON CONFLICT(bucket,window_start) DO UPDATE SET hits=rate_limits.hits+1',
+            (bucket[:160], start),
+        )
+        hits = con.execute('SELECT hits FROM rate_limits WHERE bucket=? AND window_start=?', (bucket[:160], start)).fetchone()[0]
+        if secrets.randbelow(100) == 0:
+            con.execute('DELETE FROM rate_limits WHERE window_start<?', (now - 2 * 86400,))
+    if hits > limit:
+        raise HTTPException(429, 'Too many requests. Wait a few minutes and try again.')
+
+
+def signing_key():
+    text = os.getenv('AVARA_TICKET_SIGNING_KEY', '').strip()
+    if not text:
+        raise HTTPException(503, 'Activation signing is not configured on the server.')
+    if text not in _signing_cache:
+        try:
+            key = licensing.load_private_key(text)
+        except (ValueError, TypeError):
+            logger.error('AVARA_TICKET_SIGNING_KEY is not a valid Ed25519 private key')
+            raise HTTPException(503, 'Activation signing is misconfigured on the server.')
+        _signing_cache.clear()
+        _signing_cache[text] = key
+    return _signing_cache[text]
+
+
+def offline_seconds() -> int:
+    try:
+        days = int(os.getenv('AVARA_TICKET_OFFLINE_DAYS', '7'))
+    except ValueError:
+        days = 7
+    return max(1, min(days, 400)) * 86400
+
+
+def cookie_secure() -> bool:
+    return os.environ.get('AVARA_STORE_SECURE_COOKIE', '1') == '1'
+
+
+def plan_catalog(con=None):
+    if con is not None and licensing_ready(con):
+        rows = con.execute('SELECT id,name,tier,price_inr,term_days,six_month,sort FROM plans WHERE active=1 ORDER BY sort,id').fetchall()
+        if rows:
+            return [{'id': r[0], 'name': r[1], 'tier': r[2], 'price_inr': r[3], 'term_days': r[4],
+                     'six_month': bool(r[5])} for r in rows]
+    return [{key: plan[key] for key in ('id', 'name', 'tier', 'price_inr', 'term_days', 'six_month')}
+            for plan in licensing.DEFAULT_PLANS]
+
+
+def plan_row(con, plan_id: str, active_only=True):
+    for plan in plan_catalog(con) if active_only else ():
+        if plan['id'] == plan_id:
+            return plan
+    if not active_only:
+        row = con.execute('SELECT id,name,tier,price_inr,term_days,six_month FROM plans WHERE id=?', (plan_id,)).fetchone()
+        if row:
+            return {'id': row[0], 'name': row[1], 'tier': row[2], 'price_inr': row[3], 'term_days': row[4], 'six_month': bool(row[5])}
+    return None
+
+
+def legacy_entitlement_view(con, code: str):
+    """What the pre-universal /api/activation/check answered for a legacy code."""
+    return con.execute(
+        '''SELECT installations.plan, installations.expires, installations.state, installations.paused_at,
+                  orders.plan, orders.deleted_at, orders.id, COALESCE(orders.approved_at, orders.created)
+           FROM installations JOIN orders ON orders.id=installations.order_id
+           WHERE installations.code=? AND orders.status='approved' ''', (code,),
+    ).fetchone()
+
+
+def sync_legacy_entitlement(con, code: str):
+    """Mirror one legacy installation into entitlements without rewriting the legacy row."""
+    if not licensing_ready(con):
+        return
+    current = con.execute('SELECT id, source_order_id FROM entitlements WHERE legacy_code=?', (code,)).fetchone()
+    if current and current[1] is not None:
+        return  # Renewed through the new flow; the new order is now authoritative.
+    row = legacy_entitlement_view(con, code)
+    now = int(time.time())
+    if not row:
+        if current:
+            con.execute("UPDATE entitlements SET state='cancelled',paused_at=COALESCE(paused_at,?),updated_at=? WHERE id=?",
+                        (now, now, current[0]))
+        return
+    tier, expires, state, paused_at, label, deleted_at, order_id, started = row
+    plan_id = licensing.legacy_plan_id(label) or tier
+    plan = plan_row(con, plan_id, active_only=False)
+    if not plan or plan['tier'] != tier:
+        plan_id = tier
+    six_month = int(label.startswith(('6-Month Basic', '6-Month Pro', 'AVARA 6-Month Plus')))
+    if deleted_at is not None:
+        state, paused_at = 'cancelled', paused_at or deleted_at
+    con.execute(
+        '''INSERT INTO entitlements(legacy_code,plan_id,tier,six_month,state,starts_at,expires_at,paused_at,legacy_order_id,updated_at)
+           VALUES (?,?,?,?,?,?,?,?,?,?)
+           ON CONFLICT(legacy_code) DO UPDATE SET plan_id=excluded.plan_id, tier=excluded.tier,
+             six_month=excluded.six_month, state=excluded.state, expires_at=excluded.expires_at,
+             paused_at=excluded.paused_at, legacy_order_id=excluded.legacy_order_id, updated_at=excluded.updated_at''',
+        (code, plan_id, tier, six_month, state, started or now, expires, paused_at, order_id, now),
+    )
+
+
+def sync_legacy_order(con, order_id: int):
+    if not licensing_ready(con):
+        return
+    activation_table(con)
+    for (code,) in con.execute('SELECT code FROM installations WHERE order_id=?', (order_id,)).fetchall():
+        sync_legacy_entitlement(con, code)
+    # A deleted or restored order may also be the recorded source of a moved entitlement.
+    for (code,) in con.execute('SELECT legacy_code FROM entitlements WHERE legacy_order_id=? AND legacy_code IS NOT NULL',
+                               (order_id,)).fetchall():
+        sync_legacy_entitlement(con, code)
+
+
+def migrate_legacy_entitlements(con) -> int:
+    """Copy every legacy installation into entitlements (idempotent). Mirrors migrations/002."""
+    activation_table(con)
+    codes = [row[0] for row in con.execute('SELECT code FROM installations').fetchall()]
+    before = con.execute('SELECT COUNT(*) FROM entitlements').fetchone()[0]
+    for code in codes:
+        if not con.execute('SELECT 1 FROM entitlements WHERE legacy_code=?', (code,)).fetchone():
+            sync_legacy_entitlement(con, code)
+    return con.execute('SELECT COUNT(*) FROM entitlements').fetchone()[0] - before
+
+
+def upsert_installation(con, token: str, platform: str, app_version: str, now: int, create=True):
+    inst_id = licensing.installation_id(token)
+    exists = con.execute('SELECT last_seen FROM app_installations WHERE id=?', (inst_id,)).fetchone()
+    if exists:
+        if now - exists[0] > 300:
+            con.execute('UPDATE app_installations SET last_seen=?, platform=?, app_version=? WHERE id=?',
+                        (now, platform, app_version or None, inst_id))
+        return inst_id
+    if not create:
+        return None
+    con.execute(
+        'INSERT INTO app_installations(id,token_hash,legacy_code,platform,app_version,created,last_seen) VALUES (?,?,?,?,?,?,?) '
+        'ON CONFLICT(id) DO NOTHING',
+        (inst_id, licensing.token_hash(token), licensing.legacy_code(token), platform, app_version or None, now, now),
+    )
+    return inst_id
+
+
+def legacy_entitlement_available(con, token: str) -> bool:
+    """True when this token has an unlinked legacy activation, copying it on demand.
+
+    Migration 002 copies every legacy activation up front; this covers rows that
+    were never copied (migration not yet run, or local SQLite stores).
+    """
+    code = licensing.legacy_code(token)
+    row = con.execute('SELECT installation_id FROM entitlements WHERE legacy_code=?', (code,)).fetchone()
+    if row is None:
+        activation_table(con)
+        sync_legacy_entitlement(con, code)
+        row = con.execute('SELECT installation_id FROM entitlements WHERE legacy_code=?', (code,)).fetchone()
+    return bool(row) and row[0] is None
+
+
+def link_legacy_entitlement(con, inst_id: str, token: str):
+    """An existing customer who installs the universal app keeps their legacy plan."""
+    if legacy_entitlement_available(con, token):
+        con.execute('UPDATE entitlements SET installation_id=? WHERE legacy_code=? AND installation_id IS NULL',
+                    (inst_id, licensing.legacy_code(token)))
+
+
+def installation_status(con, inst_id, token: str, now: int):
+    """Build the ticket payload and the (unsigned, display-only) code section."""
+    entitlement = None
+    if inst_id:
+        entitlement = con.execute(
+            '''SELECT e.plan_id, p.name, e.tier, e.six_month, e.state, e.expires_at
+               FROM entitlements e JOIN plans p ON p.id=e.plan_id WHERE e.installation_id=?''', (inst_id,),
+        ).fetchone()
+    state = 'none'
+    payload = {'installation_id': licensing.installation_id(token), 'plan': None, 'plan_id': None,
+               'plan_name': None, 'expires': 0, 'six_month': False, 'issued_at': now}
+    if entitlement:
+        plan_id, plan_name, tier, six_month, state, expires = entitlement
+        if state == 'active' and expires <= now:
+            state = 'expired'
+        payload.update(plan=tier, plan_id=plan_id, plan_name=plan_name, expires=int(expires), six_month=bool(six_month))
+    payload['state'] = state
+    payload['ticket_expires'] = (min(payload['expires'], now + offline_seconds()) if state == 'active'
+                                 else now + 3600)
+    code = None
+    latest = con.execute(
+        '''SELECT o.id, o.plan_id, p.name, o.price_inr, o.status, o.created, c.nonce, c.expires_at
+           FROM license_orders o JOIN activation_codes c ON c.code_hash=o.code_hash JOIN plans p ON p.id=o.plan_id
+           WHERE o.installation_id=? ORDER BY o.id DESC LIMIT 1''', (inst_id,),
+    ).fetchone() if inst_id else None
+    if latest and latest[4] in ('pending', 'rejected'):
+        status = latest[4]
+        if status == 'pending' and latest[7] <= now:
+            status = 'expired'
+        code = {'status': status, 'order_id': latest[0], 'plan_id': latest[1], 'plan_name': latest[2],
+                'price_inr': latest[3], 'created': latest[5], 'expires_at': latest[7],
+                'code': licensing.derive_code(token, bytes.fromhex(latest[6])) if status == 'pending' else None}
+    return payload, code
+
+
+def installation_account(con, inst_id):
+    """The AVARA account (name + email) this installation is signed in with, if any."""
+    if not inst_id:
+        return None
+    row = con.execute('SELECT u.name, u.email FROM app_installations i JOIN users u ON u.id=i.user_id WHERE i.id=?',
+                      (inst_id,)).fetchone()
+    return {'name': row[0], 'email': row[1]} if row else None
+
+
+def signed_status(payload, code, account=None):
+    return {'ticket': licensing.sign_ticket(payload, signing_key()), 'code': code, 'account': account,
+            'server_time': payload['issued_at']}
+
+
+# ------------------------------------------------------------- customer emails
+
+EMAIL_SUBJECTS = {
+    'order_received': 'Your AVARA order: {plan}',
+    'approved': 'AVARA {plan} is active',
+    'rejected': 'Your AVARA order was not approved',
+    'paused': 'Your AVARA plan is paused',
+    'resumed': 'Your AVARA plan is active again',
+    'cancelled': 'Your AVARA plan was cancelled',
+    'plan_changed': 'Your AVARA plan changed to {plan}',
+    'extended': 'Your AVARA plan was extended',
+}
+
+
+def customer_contact(con, inst_id):
+    """(user_id, name, email) for the account linked to an installation, or None."""
+    row = con.execute('SELECT u.id, u.name, u.email FROM app_installations i JOIN users u ON u.id=i.user_id WHERE i.id=?',
+                      (inst_id,)).fetchone() if inst_id else None
+    return tuple(row) if row else None
+
+
+def _date(seconds) -> str:
+    return time.strftime('%d %B %Y', time.gmtime(int(seconds)))
+
+
+def customer_email_body(kind: str, name: str, details: dict) -> str:
+    plan, price = details.get('plan', 'AVARA'), details.get('price_inr')
+    lines = {
+        'order_received': [f'Thank you for choosing AVARA {plan}' + (f' (₹{price:,})' if price else '') + '.',
+                           f"Your one-time code is {details.get('code')}." if details.get('code') else '',
+                           'Send this code to the AVARA owner on WhatsApp together with your cash or UPI payment.',
+                           f"The code is valid until {_date(details['code_expires'])} (UTC)." if details.get('code_expires') else '',
+                           'AVARA unlocks automatically as soon as the owner approves.'],
+        'approved': [f'Your payment was approved. AVARA {plan} is active until {_date(details.get('expires') or 0)} (UTC).',
+                     'If AVARA is open, it unlocks within a few seconds.'],
+        'rejected': ['The AVARA owner did not approve your order.' + (f" Note: {details['reason']}" if details.get('reason') else ''),
+                     'You can choose a plan again in AVARA to get a new code.'],
+        'paused': ['Your AVARA plan was paused by the owner. AVARA is locked until it is resumed.',
+                   'Reply to the owner if you have questions.'],
+        'resumed': [f'Your AVARA plan is active again until {_date(details.get('expires') or 0)} (UTC). The paused time was added back.'],
+        'cancelled': ['Your AVARA plan was cancelled. To use AVARA again, choose a plan in AVARA and send the owner the new code.'],
+        'plan_changed': [f'Your AVARA plan is now {plan}, active until {_date(details.get('expires') or 0)} (UTC).'],
+        'extended': [f'Your AVARA plan was extended. It is now active until {_date(details.get('expires') or 0)} (UTC).'],
+    }.get(kind, [details.get('message', '')])
+    body = '\n\n'.join(line for line in lines if line)
+    return f'Hello {name},\n\n{body}\n\nAVARA'
+
+
+def queue_customer_email(background_tasks, contact, kind: str, details: dict | None = None, subject=None, body=None, ref=None):
+    """Send an email to the customer after the response, and record the result in email_log."""
+    if not contact or background_tasks is None:
+        return False
+    user_id, name, email = contact
+    details = details or {}
+    subject = subject or EMAIL_SUBJECTS.get(kind, 'A message about your AVARA account').format(plan=details.get('plan', 'AVARA'))
+    body = body if body is not None else customer_email_body(kind, name, details)
+    background_tasks.add_task(_deliver_customer_email, user_id, email, kind, subject, body, ref)
+    return True
+
+
+def _send_text_email(to_email: str, subject: str, body: str, transport: str):
+    if transport == 'resend':
+        payload = {'from': os.getenv('AVARA_STORE_EMAIL_FROM', 'AVARA Orders <onboarding@resend.dev>'),
+                   'to': [to_email], 'subject': subject, 'text': body}
+        req = urllib.request.Request('https://api.resend.com/emails', data=json.dumps(payload).encode(), headers={
+            'Authorization': 'Bearer ' + os.environ['RESEND_API_KEY'].strip(),
+            'Content-Type': 'application/json', 'User-Agent': 'AVARA-Storefront/1.0',
+        }, method='POST')
+        with urllib.request.urlopen(req, timeout=8) as response:
+            if not json.load(response).get('id'):
+                raise ValueError('Missing email provider message ID')
+        return
+    msg = EmailMessage()
+    msg['To'], msg['Subject'] = to_email, subject
+    msg['From'] = os.environ['AVARA_STORE_SMTP_USER'].strip()
+    msg.set_content(body)
+    with smtplib.SMTP('smtp.gmail.com', 587, timeout=8) as smtp:
+        smtp.starttls(context=ssl.create_default_context())
+        smtp.login(str(msg['From']), ''.join(os.environ['AVARA_STORE_SMTP_PASSWORD'].split()))
+        smtp.send_message(msg)
+
+
+def _deliver_customer_email(user_id, to_email, kind, subject, body, ref):
+    transport, status, error = email_transport(), 'sent', None
+    if not transport:
+        status, error = 'not_configured', 'Set RESEND_API_KEY on Render to send customer emails.'
+    else:
+        try:
+            _send_text_email(to_email, subject, body, transport)
+        except HTTPError as exc:
+            status, error = 'failed', f'Email provider HTTP {exc.code}'
+        except (OSError, ValueError, KeyError) as exc:
+            status, error = 'failed', type(exc).__name__
+    if status != 'sent':
+        logger.warning('Customer email %s to user %s: %s', kind, user_id, error)
+    try:
+        with db() as con:
+            if licensing_ready(con):
+                con.execute('INSERT INTO email_log(at,user_id,to_email,kind,subject,status,error,ref) VALUES (?,?,?,?,?,?,?,?)',
+                            (int(time.time()), user_id, to_email, kind, subject[:200], status, error, ref))
+    except Exception as exc:  # Logging must never break the request that triggered the email.
+        logger.warning('Email log write failed (%s)', type(exc).__name__)
+
+
+def grant_license_order(con, order_id: int, actor: str, method: str = 'manual', reference=None, now=None):
+    """The single approval path: owner approval today, a payment provider later.
+
+    Atomically consumes the order's one-time code, then creates or renews the
+    installation's entitlement. Raises LicenseError for anything not grantable.
+    """
+    now = int(now or time.time())
+    row = con.execute(
+        '''SELECT o.status, o.installation_id, o.plan_id, o.code_hash, c.status, c.expires_at
+           FROM license_orders o JOIN activation_codes c ON c.code_hash=o.code_hash WHERE o.id=?''', (order_id,),
+    ).fetchone()
+    if not row:
+        raise LicenseError(404, 'Order not found.', 'unknown_order')
+    order_status, inst_id, plan_id, digest, code_status, code_expires = row
+    if code_status != 'pending' or order_status != 'pending':
+        used = 'approved' if 'approved' in (code_status, order_status) else code_status
+        raise LicenseError(409, {
+            'approved': 'This code was already used. A code can activate only once.',
+            'superseded': 'This code was replaced by a newer code from the same app. Ask the customer for the code now shown in AVARA.',
+            'rejected': 'This code was rejected. The customer must choose a plan again for a new code.',
+        }.get(used, 'This code cannot be approved.'), 'code_reuse' if used == 'approved' else 'code_' + str(used))
+    if code_expires <= now:
+        raise LicenseError(409, 'This code expired after 48 hours. Ask the customer to choose a plan again in AVARA for a new code.', 'code_expired')
+    plan = plan_row(con, plan_id, active_only=False)
+    if not plan:
+        raise LicenseError(409, 'This plan no longer exists.', 'unknown_plan')
+    if not con.execute("UPDATE activation_codes SET status='approved', used_at=? WHERE code_hash=? AND status='pending'",
+                       (now, digest)).rowcount:
+        raise LicenseError(409, 'This code was already used. A code can activate only once.', 'code_reuse')
+    con.execute(
+        "UPDATE license_orders SET status='approved', decided_at=?, decided_by=?, payment_method=?, payment_reference=? "
+        "WHERE id=? AND status='pending'", (now, actor[:80], method[:40], reference, order_id),
+    )
+    current = con.execute('SELECT id, state, expires_at FROM entitlements WHERE installation_id=?', (inst_id,)).fetchone()
+    base = max(now, current[2]) if current and current[1] == 'active' else now
+    expires = base + plan['term_days'] * 86400
+    if current:
+        con.execute(
+            '''UPDATE entitlements SET plan_id=?, tier=?, six_month=?, state='active', paused_at=NULL,
+                 starts_at=CASE WHEN state='active' AND expires_at>? THEN starts_at ELSE ? END,
+                 expires_at=?, source_order_id=?, updated_at=? WHERE id=?''',
+            (plan['id'], plan['tier'], int(plan['six_month']), now, now, expires, order_id, now, current[0]),
+        )
+    else:
+        con.execute(
+            '''INSERT INTO entitlements(installation_id,plan_id,tier,six_month,state,starts_at,expires_at,source_order_id,updated_at)
+               VALUES (?,?,?,?,'active',?,?,?,?)''',
+            (inst_id, plan['id'], plan['tier'], int(plan['six_month']), now, expires, order_id, now),
+        )
+    return {'order_id': order_id, 'installation_id': inst_id, 'plan_id': plan['id'], 'plan_name': plan['name'],
+            'expires': expires}
+
+
+# ------------------------------------------------------------- public API
+
+class InstallationRegistration(BaseModel):
+    token: str = Field(pattern=r'^[a-f0-9]{64}$')
+    plan_id: str = Field(pattern=r'^[a-z_]{2,40}$')
+    platform: str = Field(default='unknown', pattern=r'^(windows|mac|linux|unknown)$')
+    app_version: str = Field(default='', max_length=40, pattern=r'^[0-9A-Za-z.+_-]*$')
+
+
+class InstallationStatusRequest(BaseModel):
+    token: str = Field(pattern=r'^[a-f0-9]{64}$')
+    platform: str = Field(default='unknown', pattern=r'^(windows|mac|linux|unknown)$')
+    app_version: str = Field(default='', max_length=40, pattern=r'^[0-9A-Za-z.+_-]*$')
+
+
+@app.get('/api/plans')
+def public_plans(response: Response):
+    response.headers['Cache-Control'] = 'public, max-age=300'
+    with db() as con:
+        plans = plan_catalog(con)
+    return {'currency': 'INR', 'payment': 'manual', 'plans': plans}
+
+
+class InstallationAccount(BaseModel):
+    token: str = Field(pattern=r'^[a-f0-9]{64}$')
+    email: str = Field(min_length=3, max_length=254)
+    password: str = Field(min_length=12, max_length=128)
+    name: str | None = Field(default=None, max_length=100)
+    platform: str = Field(default='unknown', pattern=r'^(windows|mac|linux|unknown)$')
+    app_version: str = Field(default='', max_length=40, pattern=r'^[0-9A-Za-z.+_-]*$')
+
+
+def _hash_password(password: str, salt: bytes) -> bytes:
+    return hashlib.scrypt(password.encode(), salt=salt, n=16384, r=8, p=1)
+
+
+@app.post('/api/v2/account/{mode}')
+def installation_sign_in(mode: str, data: InstallationAccount, request: Request, response: Response,
+                         background_tasks: BackgroundTasks):
+    """Sign this AVARA installation in with an email account (the same accounts as the website)."""
+    if mode not in ('login', 'create'):
+        raise HTTPException(404)
+    response.headers['Cache-Control'] = 'no-store'
+    signing_key()
+    email, ip = data.email.strip().lower(), client_ip(request)
+    if email.count('@') != 1 or any(c in email for c in '\r\n <>,;'):
+        raise HTTPException(400, 'Enter a valid email address.')
+    rate_limit(f'app-account-ip:{ip}', 20, 900)
+    rate_limit(f'app-account-email:{email}', 10, 900)
+    inst_id, now = licensing.installation_id(data.token), int(time.time())
+    created_name = None
+    with db() as con:
+        require_licensing(con)
+        con.execute('BEGIN IMMEDIATE')
+        if mode == 'create':
+            name = (data.name or '').strip()
+            if not name:
+                raise HTTPException(400, 'Enter your name.')
+            salt = secrets.token_bytes(16)
+            inserted = con.execute('INSERT INTO users(name,email,salt,password) VALUES(?,?,?,?) ON CONFLICT(email) DO NOTHING',
+                                   (name, email, salt, _hash_password(data.password, salt)))
+            if not inserted.rowcount:
+                raise HTTPException(409, 'An account with this email already exists. Sign in instead.')
+            created_name = name
+        row = con.execute('SELECT id,salt,password,name FROM users WHERE email=?', (email,)).fetchone()
+        supplied = _hash_password(data.password, row[1] if row else bytes(16))
+        failed = not row or not hmac.compare_digest(supplied, row[2])
+        if not failed:
+            upsert_installation(con, data.token, data.platform, data.app_version, now)
+            link_legacy_entitlement(con, inst_id, data.token)
+            current = con.execute('SELECT user_id FROM app_installations WHERE id=?', (inst_id,)).fetchone()[0]
+            if current not in (None, row[0]) and con.execute('SELECT 1 FROM entitlements WHERE installation_id=?', (inst_id,)).fetchone():
+                raise HTTPException(409, 'This computer already has a plan under another AVARA account. Sign in with that account.')
+            con.execute('UPDATE app_installations SET user_id=? WHERE id=?', (row[0], inst_id))
+            audit(con, f'user:{row[0]}', 'app_account_created' if created_name else 'app_signed_in', inst_id, None, ip)
+            payload, code_info = installation_status(con, inst_id, data.token, now)
+            account = installation_account(con, inst_id)
+    if failed:  # Logged after the transaction closes so SQLite is not waiting on itself.
+        record('anonymous', 'app_sign_in_failed', inst_id, None, ip)
+        raise HTTPException(401, 'Email or password is incorrect.')
+    if created_name:
+        background_tasks.add_task(_sync_supabase_account, email, created_name)
+    return signed_status(payload, code_info, account)
+
+
+@app.post('/api/v2/installations/register')
+def register_installation(data: InstallationRegistration, request: Request, response: Response,
+                          background_tasks: BackgroundTasks):
+    """Choose a plan: creates (or reuses) a pending order with a one-time code."""
+    response.headers['Cache-Control'] = 'no-store'
+    signing_key()
+    ip, inst_id = client_ip(request), licensing.installation_id(data.token)
+    rate_limit(f'register-ip:{ip}', 20, 3600)
+    rate_limit(f'register-installation:{inst_id}', 8, 3600)
+    now = int(time.time())
+    with db() as con:
+        require_licensing(con)
+        con.execute('BEGIN IMMEDIATE')
+        plan = plan_row(con, data.plan_id)
+        if not plan:
+            raise HTTPException(400, 'Choose one of the available AVARA plans.')
+        upsert_installation(con, data.token, data.platform, data.app_version, now)
+        link_legacy_entitlement(con, inst_id, data.token)
+        contact = customer_contact(con, inst_id)
+        if not contact:
+            raise HTTPException(403, 'Sign in to your AVARA account first, so the owner knows who the order is from.')
+        new_order = None
+        pending = con.execute(
+            '''SELECT o.id, o.plan_id, c.expires_at FROM license_orders o JOIN activation_codes c ON c.code_hash=o.code_hash
+               WHERE o.installation_id=? AND o.status='pending' AND c.status='pending' ORDER BY o.id DESC LIMIT 1''',
+            (inst_id,),
+        ).fetchone()
+        if not (pending and pending[1] == plan['id'] and pending[2] > now):
+            # Changing the plan (or an expired code) replaces the pending code.
+            con.execute("UPDATE activation_codes SET status='superseded' WHERE installation_id=? AND status='pending'", (inst_id,))
+            con.execute("UPDATE license_orders SET status='superseded', decided_at=? WHERE installation_id=? AND status='pending'",
+                        (now, inst_id))
+            for _ in range(8):
+                nonce = licensing.new_nonce()
+                code = licensing.derive_code(data.token, nonce)
+                digest = licensing.code_hash(code)
+                if not con.execute('SELECT 1 FROM activation_codes WHERE code_hash=?', (digest,)).fetchone():
+                    break
+            else:
+                raise HTTPException(503, 'Could not create a unique code. Try again.')
+            con.execute(
+                'INSERT INTO activation_codes(code_hash,installation_id,nonce,hint,status,created,expires_at) VALUES (?,?,?,?,?,?,?)',
+                (digest, inst_id, nonce.hex(), licensing.code_hint(code), 'pending', now, now + licensing.CODE_TTL_SECONDS),
+            )
+            order_id = con.execute(
+                'INSERT INTO license_orders(installation_id,plan_id,price_inr,status,code_hash,created) VALUES (?,?,?,?,?,?) RETURNING id',
+                (inst_id, plan['id'], plan['price_inr'], 'pending', digest, now),
+            ).fetchone()[0]
+            audit(con, 'app:' + inst_id, 'code_created', f'license_order:{order_id}',
+                  {'plan_id': plan['id'], 'price_inr': plan['price_inr'], 'replaced': bool(pending)}, ip)
+            new_order = order_id
+        payload, code_info = installation_status(con, inst_id, data.token, now)
+        account = installation_account(con, inst_id)
+    if new_order:
+        queue_customer_email(background_tasks, contact, 'order_received',
+                             {'plan': plan['name'], 'price_inr': plan['price_inr'], 'code': code_info and code_info.get('code'),
+                              'code_expires': code_info and code_info.get('expires_at')}, ref=f'license_order:{new_order}')
+    return signed_status(payload, code_info, account)
+
+
+@app.post('/api/v2/activation/status')
+def activation_status_v2(data: InstallationStatusRequest, request: Request, response: Response):
+    """Signed activation answer for the universal app (polled while waiting)."""
+    response.headers['Cache-Control'] = 'no-store'
+    signing_key()
+    ip, inst_id = client_ip(request), licensing.installation_id(data.token)
+    rate_limit(f'status-ip:{ip}', 600, 600)
+    rate_limit(f'status-installation:{inst_id}', 120, 600)
+    now = int(time.time())
+    with db() as con:
+        require_licensing(con)
+        known = upsert_installation(con, data.token, data.platform, data.app_version, now, create=False)
+        if known:
+            link_legacy_entitlement(con, known, data.token)
+        elif legacy_entitlement_available(con, data.token):
+            # A legacy customer's first launch of the universal app: keep their plan.
+            known = upsert_installation(con, data.token, data.platform, data.app_version, now)
+            link_legacy_entitlement(con, known, data.token)
+            audit(con, 'app:' + known, 'legacy_installation_linked', known, None, ip)
+        payload, code_info = installation_status(con, known, data.token, now)
+        account = installation_account(con, known)
+    return signed_status(payload, code_info, account)
+
+
+# ------------------------------------------------------------- owner session
+
+class OwnerLogin(BaseModel):
+    key: str = Field(min_length=1, max_length=256)
+
+
+@app.post('/api/owner/login')
+def owner_login(data: OwnerLogin, request: Request):
+    expected = owner_key()
+    ip = client_ip(request)
+    rate_limit(f'owner-login:{ip}', 10, 900)
+    if not hmac.compare_digest(data.key.strip(), expected):
+        record('anonymous', 'owner_login_failed', None, None, ip)
+        raise HTTPException(401, 'Owner key is incorrect.')
+    token = secrets.token_urlsafe(32)
+    now = int(time.time())
+    with db() as con:
+        require_licensing(con)
+        con.execute('DELETE FROM owner_sessions WHERE expires<?', (now,))
+        con.execute('INSERT INTO owner_sessions(token_hash,created,expires,ip) VALUES (?,?,?,?)',
+                    (hashlib.sha256(token.encode()).hexdigest(), now, now + OWNER_SESSION_SECONDS, ip))
+        audit(con, 'owner:session:' + hashlib.sha256(token.encode()).hexdigest()[:8], 'owner_login', None, None, ip)
+    response = JSONResponse({'csrf': owner_csrf(token), 'expires': now + OWNER_SESSION_SECONDS})
+    response.set_cookie(OWNER_COOKIE, token, httponly=True, secure=cookie_secure(), samesite='strict',
+                        max_age=OWNER_SESSION_SECONDS, path='/')
+    response.headers['Cache-Control'] = 'no-store'
+    return response
+
+
+@app.get('/api/owner/session')
+def owner_session_info(request: Request, response: Response):
+    actor = owner_session(request)
+    response.headers['Cache-Control'] = 'no-store'
+    token = (getattr(request, 'cookies', None) or {}).get(OWNER_COOKIE, '')
+    return {'actor': actor, 'csrf': owner_csrf(token) if token and actor.startswith('owner:session:') else None}
+
+
+@app.post('/api/owner/logout')
+def owner_logout(request: Request):
+    actor = owner_session(request)
+    token = (getattr(request, 'cookies', None) or {}).get(OWNER_COOKIE, '')
+    with db() as con:
+        if token:
+            con.execute('DELETE FROM owner_sessions WHERE token_hash=?', (hashlib.sha256(token.encode()).hexdigest(),))
+        audit(con, actor, 'owner_logout', None, None, client_ip(request))
+    response = JSONResponse({'message': 'Signed out.'})
+    response.delete_cookie(OWNER_COOKIE, path='/', secure=cookie_secure(), httponly=True, samesite='strict')
+    return response
+
+
+# ------------------------------------------------------------- owner: codes and orders
+
+class CodeApprovalRequest(BaseModel):
+    code: str | None = Field(default=None, max_length=40)
+    order_id: int | None = Field(default=None, ge=1)
+    payment_reference: str | None = Field(default=None, max_length=120)
+
+
+class OrderRejection(BaseModel):
+    reason: str | None = Field(default=None, max_length=300)
+
+
+class EntitlementChange(BaseModel):
+    action: str = Field(pattern=r'^(pause|resume|cancel|change_plan|extend)$')
+    plan_id: str | None = Field(default=None, pattern=r'^[a-z_]{2,40}$')
+    days: int = Field(default=30, ge=1, le=400)
+
+
+def _order_rows(con, where: str, params: tuple, limit=200):
+    rows = con.execute(
+        f'''SELECT o.id, o.status, o.plan_id, p.name, o.price_inr, o.created, c.expires_at, c.status, c.hint,
+                   o.installation_id, i.platform, i.app_version, i.last_seen, o.decided_at, o.decided_by,
+                   o.payment_reference, e.state, e.expires_at, e.plan_id, o.note, u.name, u.email
+            FROM license_orders o JOIN activation_codes c ON c.code_hash=o.code_hash
+            JOIN plans p ON p.id=o.plan_id JOIN app_installations i ON i.id=o.installation_id
+            LEFT JOIN entitlements e ON e.installation_id=o.installation_id
+            LEFT JOIN users u ON u.id=i.user_id
+            WHERE {where} ORDER BY o.id DESC LIMIT {int(limit)}''', params,
+    ).fetchall()
+    now = int(time.time())
+    return [{
+        'id': r[0], 'status': 'expired' if r[1] == 'pending' and r[6] <= now else r[1],
+        'plan_id': r[2], 'plan_name': r[3], 'price_inr': r[4], 'created': r[5], 'code_expires': r[6],
+        'code_status': r[7], 'code_hint': r[8], 'installation_id': r[9], 'platform': r[10], 'app_version': r[11],
+        'last_seen': r[12], 'decided_at': r[13], 'decided_by': r[14], 'payment_reference': r[15],
+        'entitlement_state': r[16], 'entitlement_expires': r[17], 'entitlement_plan_id': r[18], 'note': r[19],
+        'customer_name': r[20], 'customer_email': r[21],
+    } for r in rows]
+
+
+@app.get('/api/owner/license-orders')
+def owner_license_orders(request: Request, response: Response, status: str = 'all', q: str = ''):
+    owner_session(request)
+    response.headers['Cache-Control'] = 'no-store'
+    now = int(time.time())
+    clauses, params = [], []
+    filters = {
+        'pending': ("o.status='pending' AND c.expires_at>?", (now,)),
+        'expired': ("o.status='pending' AND c.expires_at<=?", (now,)),
+        'approved': ("o.status='approved'", ()), 'rejected': ("o.status='rejected'", ()),
+        'superseded': ("o.status='superseded'", ()), 'all': ('1=1', ()),
+    }
+    if status not in filters:
+        raise HTTPException(400, 'Unknown status filter.')
+    clauses.append(filters[status][0])
+    params.extend(filters[status][1])
+    q = q.strip()
+    if q:
+        canonical = licensing.normalize_code(q)
+        if canonical:
+            clauses.append('o.code_hash=?')
+            params.append(licensing.code_hash(canonical))
+        elif re.fullmatch(r'ins_[0-9a-f]{24}', q):
+            clauses.append('o.installation_id=?')
+            params.append(q)
+        elif re.fullmatch(r'#?[0-9]{1,12}', q):
+            clauses.append('o.id=?')
+            params.append(int(q.lstrip('#')))
+        elif '@' in q:
+            clauses.append('lower(u.email)=?')
+            params.append(q.lower())
+        else:
+            raise HTTPException(400, 'Search by code (AVR-XXXX-XXXX), customer email, order number or installation id.')
+    with db() as con:
+        require_licensing(con)
+        orders = _order_rows(con, ' AND '.join(clauses), tuple(params))
+        counts = dict(con.execute(
+            "SELECT CASE WHEN o.status='pending' AND c.expires_at<=? THEN 'expired' ELSE o.status END, COUNT(*) "
+            'FROM license_orders o JOIN activation_codes c ON c.code_hash=o.code_hash GROUP BY 1', (now,),
+        ).fetchall())
+    return {'orders': orders, 'counts': counts, 'server_time': now}
+
+
+def _owner_refusal(actor, action, target, error: LicenseError, ip):
+    record(actor, action, target, {'reason': error.reason}, ip)
+    raise HTTPException(error.status, error.message)
+
+
+@app.post('/api/owner/license-orders/approve')
+def owner_approve_code(data: CodeApprovalRequest, request: Request, background_tasks: BackgroundTasks):
+    actor = owner_session(request)
+    ip = client_ip(request)
+    with db() as con:
+        require_licensing(con)
+        con.execute('BEGIN IMMEDIATE')
+        if data.code:
+            canonical = licensing.normalize_code(data.code)
+            if not canonical:
+                raise HTTPException(400, 'Enter the code exactly as shown in AVARA, for example AVR-7F3K-92QD.')
+            row = con.execute('SELECT id FROM license_orders WHERE code_hash=?', (licensing.code_hash(canonical),)).fetchone()
+            target = 'code:' + canonical[-4:]
+        elif data.order_id:
+            row = con.execute('SELECT id FROM license_orders WHERE id=?', (data.order_id,)).fetchone()
+            target = f'license_order:{data.order_id}'
+        else:
+            raise HTTPException(400, 'Enter a code or choose an order.')
+        if not row:
+            error = LicenseError(404, 'No order uses this code. Check the code with the customer.', 'unknown_code')
+        else:
+            try:
+                granted = grant_license_order(con, row[0], actor, 'manual', (data.payment_reference or '').strip() or None)
+                audit(con, actor, 'license_order_approved', f'license_order:{row[0]}', granted, ip)
+                contact = customer_contact(con, granted['installation_id'])
+                error = None
+            except LicenseError as exc:
+                error = exc
+        if error:
+            con.rollback()
+    if error:
+        _owner_refusal(actor, 'approve_refused', target, error, ip)
+    emailed = queue_customer_email(background_tasks, contact, 'approved',
+                                   {'plan': granted['plan_name'], 'expires': granted['expires']}, ref=f"license_order:{granted['order_id']}")
+    return {'emailed': emailed, 'message': f"Approved {granted['plan_name']} until {time.strftime('%d %b %Y', time.gmtime(granted['expires']))} (UTC). "
+                       'The customer\'s AVARA unlocks within a few seconds.', **granted}
+
+
+@app.post('/api/owner/license-orders/{order_id}/reject')
+def owner_reject_order(order_id: int, data: OrderRejection, request: Request, background_tasks: BackgroundTasks):
+    actor = owner_session(request)
+    now = int(time.time())
+    with db() as con:
+        require_licensing(con)
+        row = con.execute('SELECT code_hash, installation_id FROM license_orders WHERE id=? AND status=?', (order_id, 'pending')).fetchone()
+        if not row:
+            raise HTTPException(409, 'Only a pending order can be rejected.')
+        contact = customer_contact(con, row[1])
+        con.execute("UPDATE license_orders SET status='rejected', decided_at=?, decided_by=?, note=? WHERE id=? AND status='pending'",
+                    (now, actor, (data.reason or '').strip() or None, order_id))
+        con.execute("UPDATE activation_codes SET status='rejected', used_at=? WHERE code_hash=? AND status='pending'", (now, row[0]))
+        audit(con, actor, 'license_order_rejected', f'license_order:{order_id}', {'reason': data.reason}, client_ip(request))
+    queue_customer_email(background_tasks, contact, 'rejected', {'reason': (data.reason or '').strip()}, ref=f'license_order:{order_id}')
+    return {'message': f'Order #{order_id} rejected. The customer can choose a plan again for a new code.'}
+
+
+@app.get('/api/owner/entitlements')
+def owner_entitlements(request: Request, response: Response, q: str = ''):
+    owner_session(request)
+    response.headers['Cache-Control'] = 'no-store'
+    clause, params = '1=1', ()
+    q = q.strip()
+    if q:
+        if re.fullmatch(r'ins_[0-9a-f]{24}', q):
+            clause, params = 'e.installation_id=?', (q,)
+        elif re.fullmatch(r'#?[0-9]{1,12}', q):
+            clause, params = 'e.id=?', (int(q.lstrip('#')),)
+        elif '@' in q:
+            clause, params = 'lower(u.email)=?', (q.lower(),)
+        else:
+            canonical = licensing.normalize_code(q)
+            if not canonical:
+                raise HTTPException(400, 'Search by code, customer email, entitlement number or installation id.')
+            clause = 'e.installation_id=(SELECT installation_id FROM activation_codes WHERE code_hash=?)'
+            params = (licensing.code_hash(canonical),)
+    with db() as con:
+        require_licensing(con)
+        rows = con.execute(
+            f'''SELECT e.id, e.installation_id, e.legacy_code IS NOT NULL, e.plan_id, p.name, e.tier, e.six_month, e.state,
+                       e.starts_at, e.expires_at, e.paused_at, e.source_order_id, e.legacy_order_id, e.updated_at,
+                       i.platform, i.last_seen, u.name, u.email
+                FROM entitlements e JOIN plans p ON p.id=e.plan_id
+                LEFT JOIN app_installations i ON i.id=e.installation_id
+                LEFT JOIN orders lo ON lo.id=e.legacy_order_id
+                LEFT JOIN users u ON u.id=COALESCE(i.user_id, lo.user_id)
+                WHERE {clause} ORDER BY e.updated_at DESC LIMIT 300''', params,
+        ).fetchall()
+        plans = plan_catalog(con)
+    now = int(time.time())
+    return {'entitlements': [{
+        'id': r[0], 'installation_id': r[1], 'legacy': bool(r[2]), 'plan_id': r[3], 'plan_name': r[4], 'tier': r[5],
+        'six_month': bool(r[6]), 'state': 'expired' if r[7] == 'active' and r[9] <= now else r[7],
+        'starts_at': r[8], 'expires_at': r[9], 'paused_at': r[10], 'source_order_id': r[11],
+        'legacy_order_id': r[12], 'updated_at': r[13], 'platform': r[14], 'last_seen': r[15],
+        'customer_name': r[16], 'customer_email': r[17],
+    } for r in rows], 'plans': plans, 'server_time': now}
+
+
+@app.post('/api/owner/entitlements/{entitlement_id}')
+def owner_change_entitlement(entitlement_id: int, data: EntitlementChange, request: Request, background_tasks: BackgroundTasks):
+    actor = owner_session(request)
+    now = int(time.time())
+    with db() as con:
+        require_licensing(con)
+        con.execute('BEGIN IMMEDIATE')
+        row = con.execute('SELECT plan_id, state, expires_at, paused_at, installation_id FROM entitlements WHERE id=?', (entitlement_id,)).fetchone()
+        if not row:
+            raise HTTPException(404, 'Installation plan not found.')
+        plan_id, state, expires, paused_at, inst_id = row
+        contact = customer_contact(con, inst_id)
+        plan_name = (plan_row(con, plan_id, active_only=False) or {}).get('name', 'AVARA')
+        if state == 'cancelled':
+            # Cancellation is final. The customer starts again by choosing a plan in
+            # AVARA (new code), which grant_license_order turns into a fresh term.
+            raise HTTPException(409, 'This plan is cancelled, which is final. The customer can choose a plan in AVARA to get a new code.')
+        if data.action == 'pause':
+            if state != 'active':
+                raise HTTPException(409, 'Only an active plan can be paused.')
+            con.execute("UPDATE entitlements SET state='paused', paused_at=?, updated_at=? WHERE id=?", (now, now, entitlement_id))
+            message = 'Paused. AVARA locks at its next online check.'
+        elif data.action == 'resume':
+            if state != 'paused':
+                raise HTTPException(409, 'Only a paused plan can be resumed.')
+            extension = max(0, now - paused_at) if paused_at else 0
+            expires = expires + extension
+            con.execute("UPDATE entitlements SET state='active', paused_at=NULL, expires_at=?, updated_at=? WHERE id=?",
+                        (expires, now, entitlement_id))
+            message = 'Resumed. The paused time was added back to the expiry.'
+        elif data.action == 'cancel':
+            con.execute("UPDATE entitlements SET state='cancelled', paused_at=?, updated_at=? WHERE id=?", (now, now, entitlement_id))
+            message = 'Cancelled for good. AVARA locks within about 30 seconds. To use AVARA again the customer must choose a plan and send a new code.'
+        elif data.action == 'change_plan':
+            plan = plan_row(con, data.plan_id or '', active_only=False)
+            if not plan:
+                raise HTTPException(400, 'Choose a valid plan.')
+            if plan['six_month']:
+                expires = max(expires, now + plan['term_days'] * 86400)
+            con.execute('UPDATE entitlements SET plan_id=?, tier=?, six_month=?, expires_at=?, updated_at=? WHERE id=?',
+                        (plan['id'], plan['tier'], int(plan['six_month']), expires, now, entitlement_id))
+            message = f"Changed to {plan['name']}."
+            plan_name = plan['name']
+        else:
+            expires = max(now, expires) + data.days * 86400
+            con.execute('UPDATE entitlements SET expires_at=?, updated_at=? WHERE id=?', (expires, now, entitlement_id))
+            message = f'Extended by {data.days} days.'
+        audit(con, actor, 'entitlement_' + data.action, f'entitlement:{entitlement_id}',
+              {'from_plan': plan_id, 'plan_id': data.plan_id, 'days': data.days if data.action == 'extend' else None},
+              client_ip(request))
+    kind = {'pause': 'paused', 'resume': 'resumed', 'cancel': 'cancelled', 'change_plan': 'plan_changed', 'extend': 'extended'}[data.action]
+    emailed = queue_customer_email(background_tasks, contact, kind, {'plan': plan_name, 'expires': expires},
+                                   ref=f'entitlement:{entitlement_id}')
+    if emailed:
+        message += ' The customer is being emailed.'
+    return {'message': message, 'emailed': emailed}
+
+
+class OwnerEmail(BaseModel):
+    installation_id: str | None = Field(default=None, pattern=r'^ins_[0-9a-f]{24}$')
+    email: str | None = Field(default=None, max_length=254)
+    subject: str = Field(min_length=1, max_length=150)
+    message: str = Field(min_length=1, max_length=5000)
+
+
+@app.post('/api/owner/email')
+def owner_email_customer(data: OwnerEmail, request: Request, background_tasks: BackgroundTasks):
+    """Send your own message to a customer (by installation or account email)."""
+    actor = owner_session(request)
+    with db() as con:
+        require_licensing(con)
+        if data.installation_id:
+            contact = customer_contact(con, data.installation_id)
+        elif data.email:
+            row = con.execute('SELECT id, name, email FROM users WHERE lower(email)=?', (data.email.strip().lower(),)).fetchone()
+            contact = tuple(row) if row else None
+        else:
+            raise HTTPException(400, 'Choose a customer.')
+        if not contact:
+            raise HTTPException(404, 'This customer has no AVARA account email.')
+        audit(con, actor, 'customer_emailed', data.installation_id or f'user:{contact[0]}', {'subject': data.subject[:120]},
+              client_ip(request))
+    body = f'Hello {contact[1]},\n\n{data.message.strip()}\n\nAVARA'
+    queue_customer_email(background_tasks, contact, 'owner_message', subject=data.subject.strip(), body=body,
+                         ref=data.installation_id)
+    return {'message': f'Email to {contact[2]} is being sent.' if email_transport() else
+            'Saved, but email sending is not set up yet (RESEND_API_KEY on Render). See the Emails tab.'}
+
+
+@app.get('/api/owner/emails')
+def owner_email_log(request: Request, response: Response, limit: int = 200):
+    owner_session(request)
+    response.headers['Cache-Control'] = 'no-store'
+    with db() as con:
+        require_licensing(con)
+        rows = con.execute('SELECT id, at, to_email, kind, subject, status, error FROM email_log ORDER BY id DESC LIMIT ?',
+                           (max(1, min(int(limit), 500)),)).fetchall()
+    return {'configured': bool(email_transport()),
+            'emails': [{'id': r[0], 'at': r[1], 'to': r[2], 'kind': r[3], 'subject': r[4], 'status': r[5], 'error': r[6]}
+                       for r in rows]}
+
+
+@app.get('/api/owner/audit')
+def owner_audit(request: Request, response: Response, limit: int = 200):
+    owner_session(request)
+    response.headers['Cache-Control'] = 'no-store'
+    with db() as con:
+        require_licensing(con)
+        rows = con.execute('SELECT id, at, actor, action, target, detail, ip FROM audit_log ORDER BY id DESC LIMIT ?',
+                           (max(1, min(int(limit), 500)),)).fetchall()
+    return {'entries': [{'id': r[0], 'at': r[1], 'actor': r[2], 'action': r[3], 'target': r[4],
+                         'detail': json.loads(r[5]) if r[5] else None, 'ip': r[6]} for r in rows]}
+
+
+# ------------------------------------------------------------- customer account
+
+class InstallationLink(BaseModel):
+    code: str = Field(min_length=8, max_length=40)
+
+
+@app.post('/api/account/link-installation')
+def link_installation(data: InstallationLink, request: Request):
+    user_id, _, _ = session(request)
+    canonical = licensing.normalize_code(data.code)
+    if not canonical:
+        raise HTTPException(400, 'Enter the code shown in AVARA, for example AVR-7F3K-92QD.')
+    rate_limit(f'link-user:{user_id}', 10, 3600)
+    with db() as con:
+        require_licensing(con)
+        row = con.execute(
+            "SELECT c.installation_id, i.user_id FROM activation_codes c JOIN app_installations i ON i.id=c.installation_id "
+            "WHERE c.code_hash=? AND c.status IN ('pending','approved')", (licensing.code_hash(canonical),),
+        ).fetchone()
+        if not row:
+            raise HTTPException(404, 'This code was not found. Use the latest code shown in AVARA.')
+        if row[1] not in (None, user_id):
+            raise HTTPException(409, 'This AVARA installation is linked to another account.')
+        con.execute('UPDATE app_installations SET user_id=? WHERE id=?', (user_id, row[0]))
+        audit(con, f'user:{user_id}', 'installation_linked', row[0], None, client_ip(request))
+    return {'message': 'This computer is now shown in your account.'}
+
+
+@app.get('/api/account/installations')
+def account_installations(request: Request):
+    user_id, _, _ = session(request)
+    now = int(time.time())
+    with db() as con:
+        if not licensing_ready(con):
+            return {'installations': []}
+        rows = con.execute(
+            '''SELECT e.id, p.name, e.tier, e.state, e.expires_at, i.platform, e.installation_id, e.legacy_order_id
+               FROM entitlements e JOIN plans p ON p.id=e.plan_id
+               LEFT JOIN app_installations i ON i.id=e.installation_id
+               LEFT JOIN orders lo ON lo.id=e.legacy_order_id
+               WHERE i.user_id=? OR (lo.user_id=? AND lo.deleted_at IS NULL)
+               ORDER BY e.expires_at DESC''', (user_id, user_id),
+        ).fetchall()
+        pending = con.execute(
+            '''SELECT o.id, p.name, o.price_inr, c.expires_at, i.platform FROM license_orders o
+               JOIN activation_codes c ON c.code_hash=o.code_hash JOIN plans p ON p.id=o.plan_id
+               JOIN app_installations i ON i.id=o.installation_id
+               WHERE i.user_id=? AND o.status='pending' AND c.expires_at>? ORDER BY o.id DESC''', (user_id, now),
+        ).fetchall()
+    return {'installations': [{
+        'id': r[0], 'plan_name': r[1], 'tier': r[2], 'state': 'expired' if r[3] == 'active' and r[4] <= now else r[3],
+        'expires_at': r[4], 'platform': r[5] or 'unknown', 'legacy_order_id': r[7]} for r in rows],
+        'pending': [{'order_id': r[0], 'plan_name': r[1], 'price_inr': r[2], 'code_expires': r[3], 'platform': r[4]}
+                    for r in pending]}
+
+
+# ------------------------------------------------------------- public universal downloads
+
+UNIVERSAL_MANIFEST_PATH = ROOT / 'universal-installers.json'
+UNIVERSAL_RELEASE = json.loads(UNIVERSAL_MANIFEST_PATH.read_text(encoding='utf-8')) if UNIVERSAL_MANIFEST_PATH.is_file() else {}
+PUBLIC_PLATFORMS = {
+    'windows': ('windows', 'application/vnd.microsoft.portable-executable', 'Windows 10 or 11 (64-bit)'),
+    'mac': ('mac-arm64', 'application/x-apple-diskimage', 'Apple Silicon Mac, macOS 14 or later'),
+}
+_parts_ready_cache = {}
+
+
+def public_downloads_enabled() -> bool:
+    default = str(UNIVERSAL_RELEASE.get('enabled', False)).lower()
+    return os.getenv('AVARA_PUBLIC_DOWNLOADS', default).strip().lower() == 'true'
+
+
+def universal_platform(platform: str):
+    release = UNIVERSAL_RELEASE.get('platforms', {}).get(PUBLIC_PLATFORMS[platform][0])
+    if not release or not release.get('enabled', True) or not release.get('parts'):
+        return None
+    return release
+
+
+def storage_parts_ready(release) -> bool:
+    cached = _parts_ready_cache.get(release['sha256'])
+    if cached and cached[0] > time.monotonic():
+        return cached[1]
+    ready = True
+    for part in release['parts']:
+        request = storage_object_request(part['name'], 'HEAD')
+        if not request:
+            ready = False
+            break
+        try:
+            with urllib.request.urlopen(request, timeout=8) as response:
+                if int(response.headers.get('Content-Length', -1)) != part['size']:
+                    ready = False
+                    break
+        except (HTTPError, OSError, ValueError):
+            ready = False
+            break
+    _parts_ready_cache[release['sha256']] = (time.monotonic() + 60, ready)
+    return ready
+
+
+@app.get('/api/downloads')
+def public_download_status(response: Response):
+    response.headers['Cache-Control'] = 'no-store'
+    enabled = public_downloads_enabled()
+    result = {'version': UNIVERSAL_RELEASE.get('version'), 'enabled': enabled, 'platforms': {}}
+    for platform, (_key, _media, requirement) in PUBLIC_PLATFORMS.items():
+        release = universal_platform(platform) if enabled else None
+        available = bool(release) and storage_parts_ready(release)
+        message = None if available else ((release or UNIVERSAL_RELEASE.get('platforms', {}).get(PUBLIC_PLATFORMS[platform][0]) or {})
+                                          .get('message') or 'Coming soon. Check back shortly.')
+        result['platforms'][platform] = {
+            'available': available, 'requirement': requirement, 'message': message,
+            **({'filename': release['filename'], 'size': release['size'], 'sha256': release['sha256']} if available else {}),
+        }
+    return result
+
+
+@app.get('/download/{platform}')
+def public_download(platform: str, request: Request):
+    if platform not in PUBLIC_PLATFORMS:
+        raise HTTPException(404)
+    release = universal_platform(platform) if public_downloads_enabled() else None
+    if not release:
+        raise HTTPException(503, 'This download is not available yet.')
+    # Downloads cost bandwidth, so they are limited per address on the server.
+    rate_limit(f'download:{platform}:{client_ip(request)}', 6, 3600)
+    if not storage_parts_ready(release):
+        raise HTTPException(503, 'The installer is temporarily unavailable. Try again shortly.')
+    requests = [storage_object_request(part['name']) for part in release['parts']]
+    try:
+        first = urllib.request.urlopen(requests[0], timeout=30)
+    except (HTTPError, OSError, ValueError):
+        raise HTTPException(503, 'The installer is temporarily unavailable. Try again shortly.')
+    return StreamingResponse(
+        stream_installer_parts(requests, release, first), media_type=PUBLIC_PLATFORMS[platform][1],
+        headers={'Cache-Control': 'no-store', 'Content-Length': str(release['size']),
+                 'Content-Disposition': f'attachment; filename="{release["filename"]}"',
+                 'ETag': '"' + release['sha256'] + '"'},
+    )
