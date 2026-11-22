@@ -356,7 +356,7 @@
 
   <section id="account" aria-labelledby="account-title">
     <div class="wrap">
-      <div class="section-head center"><span class="eyebrow">Account</span><h2 id="account-title">Your AVARA</h2><p>Optional: sign in to see your plan and expiry, leave a review, or reach earlier website orders.</p></div>
+      <div class="section-head center"><span class="eyebrow">Account</span><h2 id="account-title">Your AVARA</h2><p>Optional: sign in to see your plan and expiry, or to leave a review.</p></div>
       <div class="account">
         <div id="account-panel">
           <div class="tabs" role="group" aria-label="Account mode"><button type="button" id="login-tab" aria-pressed="true">Sign in</button><button type="button" id="signup-tab" aria-pressed="false">Create account</button></div>
@@ -373,11 +373,6 @@
           <div class="block-head"><h3>Your plan</h3><button class="btn ghost" type="button" id="refresh-installations">Refresh</button></div>
           <div class="list" id="installations-list"></div>
           <form id="link-form" class="form"><label>Show a computer in this account<input id="link-code" autocomplete="off" spellcheck="false" maxlength="40" placeholder="Code shown in AVARA, e.g. AVR-7F3K-92QD" required></label><button class="btn ghost" type="submit">Add this computer</button></form>
-        </div>
-        <div class="block" id="customer-orders" hidden>
-          <div class="block-head"><h3>Earlier website orders</h3><button class="btn ghost" type="button" id="refresh-orders">Refresh</button></div>
-          <p class="fine">Orders placed before AVARA moved to one download. Their downloads keep working.</p>
-          <div class="list" id="orders-list"></div>
         </div>
         <div class="notice" id="notice" role="status" aria-live="polite"></div>
       </div>
@@ -431,24 +426,12 @@ async function loadInstallations() {
     const labels = {active: 'Active', paused: 'Paused', cancelled: 'Cancelled', expired: 'Expired'};
     for (const row of result.installations) {
       const where = row.platform === 'mac' ? 'Mac' : row.platform === 'windows' ? 'Windows' : 'Computer';
-      list.append(item('AVARA ' + row.plan_name + ' · ' + where, (labels[row.state] || row.state) + (row.state === 'active' ? ' until ' + day(row.expires_at) : ' · ended ' + day(row.expires_at))));
+      const note = row.needs_new_app && row.state === 'active'
+        ? 'Get AVARA 1.1.0 from Download above and install it on the same computer: your plan carries over automatically.' : '';
+      list.append(item('AVARA ' + row.plan_name + ' · ' + where, (labels[row.state] || row.state) + (row.state === 'active' ? ' until ' + day(row.expires_at) : ' · ended ' + day(row.expires_at)), note));
     }
     for (const row of result.pending) list.append(item(row.plan_name + ' · ₹' + Number(row.price_inr).toLocaleString('en-IN'), 'Waiting for owner approval', 'Code valid until ' + day(row.code_expires)));
     if (!list.children.length) list.textContent = 'No computer is linked yet. Enter the code shown in AVARA below to see its plan here.';
-  } catch (error) { list.textContent = error.message; }
-}
-async function loadOrders() {
-  const list = field('orders-list'); list.textContent = 'Loading…';
-  try {
-    const result = await api('/api/orders'); list.textContent = '';
-    if (!result.orders.length) { field('customer-orders').hidden = true; return; }
-    field('customer-orders').hidden = false;
-    for (const order of result.orders) {
-      const status = order.status === 'superseded' ? 'Replaced by a newer order' : order.status === 'approved' ? 'Approved' : 'Awaiting approval';
-      const card = item('Order #' + order.id + ' · ' + order.plan + ' · ' + (order.platform === 'mac' ? 'Mac' : 'Windows'), status);
-      if (order.download_ready) { const link = document.createElement('a'); link.className = 'btn ghost'; link.href = '/api/order/' + order.id + '/download'; link.textContent = 'Download'; card.append(link); }
-      list.append(card);
-    }
   } catch (error) { list.textContent = error.message; }
 }
 function showSession(name) {
@@ -456,9 +439,8 @@ function showSession(name) {
   field('my-avara').hidden = !name;
   field('signed-in').hidden = !name;
   field('signed-in').textContent = name ? 'Signed in as ' + name : '';
-  if (!name) field('customer-orders').hidden = true;
   field('password').value = ''; field('confirm').value = '';
-  if (name) { loadInstallations(); loadOrders(); }
+  if (name) loadInstallations();
 }
 async function loadDownloads() {
   try {
@@ -474,7 +456,6 @@ async function loadDownloads() {
     document.querySelectorAll('.download-card .btn').forEach(link => { link.textContent = 'Not available right now'; });
   }
 }
-field('refresh-orders').onclick = loadOrders;
 field('refresh-installations').onclick = loadInstallations;
 field('signup-tab').onclick = () => { authMode(true); notice(''); };
 field('login-tab').onclick = () => { authMode(false); notice(''); };

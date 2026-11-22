@@ -2239,7 +2239,7 @@ def account_installations(request: Request):
         if not licensing_ready(con):
             return {'installations': []}
         rows = con.execute(
-            '''SELECT e.id, p.name, e.tier, e.state, e.expires_at, i.platform, e.installation_id, e.legacy_order_id
+            '''SELECT e.id, p.name, e.tier, e.state, e.expires_at, COALESCE(i.platform, lo.platform), e.installation_id, e.legacy_order_id
                FROM entitlements e JOIN plans p ON p.id=e.plan_id
                LEFT JOIN app_installations i ON i.id=e.installation_id
                LEFT JOIN orders lo ON lo.id=e.legacy_order_id
@@ -2254,7 +2254,8 @@ def account_installations(request: Request):
         ).fetchall()
     return {'installations': [{
         'id': r[0], 'plan_name': r[1], 'tier': r[2], 'state': 'expired' if r[3] == 'active' and r[4] <= now else r[3],
-        'expires_at': r[4], 'platform': r[5] or 'unknown', 'legacy_order_id': r[7]} for r in rows],
+        'expires_at': r[4], 'platform': r[5] or 'unknown', 'legacy_order_id': r[7],
+        'needs_new_app': r[6] is None} for r in rows],
         'pending': [{'order_id': r[0], 'plan_name': r[1], 'price_inr': r[2], 'code_expires': r[3], 'platform': r[4]}
                     for r in pending]}
 
