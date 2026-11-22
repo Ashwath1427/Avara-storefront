@@ -254,10 +254,10 @@ async function loadOrders() {
       title.textContent = 'Order #' + order.id + ' · ' + order.plan + ' · ' + (order.platform === 'mac' ? 'Mac' : 'Windows');
       const status = document.createElement('span');
       status.className = 'order-status';
-      status.textContent = order.status === 'approved' ? 'Approved and ready' : 'Awaiting approval';
+      status.textContent = order.status === 'superseded' ? 'Replaced by a newer order' : order.status === 'approved' ? 'Approved and ready' : 'Awaiting approval';
       const email = document.createElement('span');
       email.className = 'fine';
-      email.textContent = order.status === 'approved' ? 'Delivery email: ' + order.delivery_email_status : 'You will be emailed after approval.';
+      email.textContent = order.status === 'superseded' ? 'This installation now uses its newer approved order.' : order.status === 'approved' ? 'Delivery email: ' + order.delivery_email_status : 'You will be emailed after approval.';
       details.append(title, status, email);
       card.append(details);
       if (order.download_ready) {

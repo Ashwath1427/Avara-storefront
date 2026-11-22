@@ -181,6 +181,7 @@ def plan_slug(plan: str):
 
 class ActivationApproval(BaseModel):
     code: str = Field(min_length=1, max_length=80)
+    replace_existing: bool = False
 
 
 class SubscriptionChange(BaseModel):
@@ -221,7 +222,8 @@ def activate_installation(order_id: int, data: ActivationApproval, request: Requ
         raise HTTPException(400, 'Enter the activation code shown in the customer’s AVARA app.')
     with db() as con:
         activation_table(con)
-        order = con.execute('SELECT plan,status FROM orders WHERE id=? AND deleted_at IS NULL', (order_id,)).fetchone()
+        con.execute('BEGIN IMMEDIATE')
+        order = con.execute('SELECT plan,status,user_id,platform FROM orders WHERE id=? AND deleted_at IS NULL', (order_id,)).fetchone()
         if not order or order[1] != 'approved':
             raise HTTPException(409, 'Only a paid and approved order can activate an installation.')
         plan = plan_slug(order[0])
@@ -229,6 +231,29 @@ def activate_installation(order_id: int, data: ActivationApproval, request: Requ
             raise HTTPException(409, 'Enter a valid Basic or Pro installation code.')
         term_days = 180 if order[0].startswith(('AVARA 6-Month Plus', '6-Month Basic', '6-Month Pro')) else 30
         expires = int(time.time()) + term_days * 86400
+        existing = con.execute(
+            '''SELECT installations.order_id,orders.user_id,orders.platform,orders.plan
+               FROM installations JOIN orders ON orders.id=installations.order_id
+               WHERE installations.code=?''', (code,),
+        ).fetchone()
+        if existing and existing[0] != order_id:
+            if existing[1] != order[2] or existing[2] != order[3]:
+                raise HTTPException(409, 'This installation belongs to a different customer or operating system.')
+            if con.execute('SELECT 1 FROM installations WHERE order_id=?', (order_id,)).fetchone():
+                raise HTTPException(409, 'This order already has an installation.')
+            if not data.replace_existing:
+                raise HTTPException(409, {
+                    'code': 'installation_already_linked',
+                    'message': f'This installation is linked to order #{existing[0]} ({existing[3]}). Apply this approved order to the existing installation?',
+                    'existing_order_id': existing[0],
+                })
+            con.execute(
+                "UPDATE installations SET order_id=?,plan=?,expires=?,state='active',paused_at=NULL WHERE code=?",
+                (order_id, plan, expires, code),
+            )
+            # The old paid order remains in history but cannot activate a second device.
+            con.execute("UPDATE orders SET status='superseded' WHERE id=?", (existing[0],))
+            return {'message': f'Existing installation updated to AVARA {plan.title()} for {term_days} days using order #{order_id}. The app will refresh at its next license check.'}
         inserted = con.execute(
             'INSERT INTO installations(code,order_id,plan,expires,state,paused_at) VALUES (?,?,?,?,?,?) ON CONFLICT DO NOTHING',
             (code, order_id, plan, expires, 'active', None),
