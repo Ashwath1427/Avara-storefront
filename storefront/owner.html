@@ -122,6 +122,7 @@ async function loadOrders(){
   finally{loadButton.disabled=false;}
 }
 const deletedLabel=document.createElement('label'),showDeleted=document.createElement('input');showDeleted.type='checkbox';showDeleted.style.cssText='display:inline-block;width:auto;margin:0 8px 0 0';deletedLabel.append(showDeleted,document.createTextNode('Show deleted orders'));notice.before(deletedLabel);showDeleted.onchange=()=>loadOrders();
+const syncReleases=document.createElement('button');syncReleases.type='button';syncReleases.className='btn secondary';syncReleases.style.marginLeft='16px';syncReleases.textContent='Sync release catalog';deletedLabel.after(syncReleases);syncReleases.onclick=async()=>{syncReleases.disabled=true;notice.textContent='Checking installer parts and syncing releases…';try{const result=await ownerApi('/api/admin/releases/publish-catalog','POST');notice.textContent=result.message;}catch(error){notice.textContent=error.message;}finally{syncReleases.disabled=false;}};
 async function approve(id,button){
   if(!confirm('Approve order #'+id+' and email the customer?'))return;
   button.disabled=true;notice.textContent='Approving order and preparing the customer email…';

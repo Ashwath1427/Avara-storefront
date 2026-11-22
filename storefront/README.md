@@ -69,3 +69,9 @@ Customer instructions are maintained in `AVARA_SETUP_GUIDE.md` and `setup.html`;
 Use `migrate_store.py` only with a verified SQLite backup and a privately configured destination before accepting writes. If the backup is unavailable, `supabase-order-recovery.sql` documents verified customer reconciliation; old public mirror numbers can repeat. Do not infer ownership or password recovery from mirror records alone.
 
 The footer lock reward is server-backed and limited to one claim per account; verify matching claims before manually fulfilling free access. Keep production backups and do not reset reward tables. Cash approval remains manual. Email verification, account recovery, rate limiting, monitoring, published legal notices and a security review remain production hardening work.
+
+## Separate plan downloads
+
+Each of Basic, Pro, 6-Month Basic and 6-Month Pro has a distinct Windows EXE, Apple Silicon DMG and Intel DMG download filename: 12 names total. The authenticated route derives the filename from the approved order; the server remains the authority for features and 30/180-day duration. All plans share the three verified app engines, so storage parts are not duplicated. `release-catalog.json` in the private bucket lists all 12 plan filenames, hashes, prices, terms and underlying pieces. The owner-only Sync release catalog control verifies availability and publishes this catalog using existing server-side storage credentials.
+
+Local customer exports are generated with `python packaging/package_plan_installers.py` into `customer releases/1.0.1`, grouped into four plan folders. The script reconstructs and hashes the three original engines, exports 12 plan-labelled files and verifies every exported hash. These are labelled exports of verified 1.0.1 engines, not newly compiled app versions. Changing filenames or editing a catalog does not grant access. Keep owner builds separate.

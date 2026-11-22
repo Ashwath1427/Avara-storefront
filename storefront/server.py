@@ -363,6 +363,48 @@ def plan_filename(plan: str, platform: str = 'windows'):
     return f'avara-{plan_slug(plan)}{ "-mac" if platform == "mac" else ""}.zip'
 
 
+def customer_installer_filename(plan, platform):
+    """Name the download for its paid plan without duplicating stored app engines."""
+    edition = plan_slug(plan)
+    term = '6month-' if plan.startswith(('6-Month Basic', '6-Month Pro', 'AVARA 6-Month Plus')) else ''
+    suffix = 'windows-setup.exe' if platform == 'windows' else platform + '.dmg'
+    if platform not in INSTALLER_FILES:
+        raise HTTPException(400, 'Choose a supported operating system and architecture.')
+    return f'AVARA-{INSTALLER_VERSION}-{term}{edition}-{suffix}'
+
+
+def release_catalog():
+    plans = [('Basic', 150, 30), ('Pro', 200, 30), ('6-Month Basic', 1000, 180), ('6-Month Pro', 1400, 180)]
+    return {'version': INSTALLER_VERSION, 'requires_approved_order': True,
+            'entitlement_authority': 'approved_storefront_order',
+            'downloads': [dict(plan=plan, price_inr=price, term_days=days, platform=platform,
+                               filename=customer_installer_filename(plan, platform),
+                               size=release['size'], sha256=release['sha256'], parts=release['parts'])
+                          for plan, price, days in plans for platform, release in PART_RELEASE['platforms'].items()]}
+
+
+@app.post('/api/admin/releases/publish-catalog')
+def publish_release_catalog(request: Request):
+    owner_session(request)
+    if not installer_downloads() or not PART_RELEASE.get('enabled'):
+        raise HTTPException(409, 'Native installer delivery must be enabled first.')
+    for platform in INSTALLER_FILES:
+        if not plan_bundle_ready('Basic', platform):
+            raise HTTPException(409, 'A required installer part is missing. Catalog was not published.')
+    upload = storage_request('Basic', method='POST', object_name='release-catalog.json')
+    if not upload:
+        raise HTTPException(503, 'Private release storage is not configured.')
+    upload.data = json.dumps(release_catalog(), indent=2).encode('utf-8')
+    upload.add_header('Content-Type', 'application/json')
+    upload.add_header('x-upsert', 'true')
+    try:
+        with urllib.request.urlopen(upload, timeout=30) as result:
+            result.read(4096)
+    except (HTTPError, OSError, ValueError):
+        raise HTTPException(503, 'Could not sync the private release catalog. Try again.')
+    return {'message': 'Release catalog synced to Supabase: 12 plan downloads using 14 shared installer parts.'}
+
+
 def plan_bundle(plan: str, platform: str = 'windows'):
     slug = plan_slug(plan)
     plan_filename(plan, platform)
@@ -532,7 +574,7 @@ def download_order(order_id: int, request: Request, platform: str | None = None,
         media_type = INSTALLER_FILES[platform][1]
     bundle = plan_bundle(plan, platform)
     if bundle.is_file():
-        return FileResponse(bundle, filename=plan_filename(plan, platform), media_type=media_type, headers={'Cache-Control': 'no-store'})
+        return FileResponse(bundle, filename=customer_installer_filename(plan, platform) if installer_downloads() else plan_filename(plan, platform), media_type=media_type, headers={'Cache-Control': 'no-store'})
     metadata = installer_parts(platform)
     if metadata:
         if not plan_bundle_ready(plan, platform):
@@ -546,7 +588,7 @@ def download_order(order_id: int, request: Request, platform: str | None = None,
             stream_installer_parts(requests, metadata, first),
             media_type=media_type,
             headers={"Cache-Control": "no-store", "Content-Length": str(metadata["size"]),
-                     "Content-Disposition": f'attachment; filename="{metadata["filename"]}"',
+                     "Content-Disposition": f'attachment; filename="{customer_installer_filename(plan, platform)}"',
                      "ETag": '"' + metadata["sha256"] + '"'},
         )
     storage = storage_request(plan, platform=platform)
@@ -569,7 +611,7 @@ def download_order(order_id: int, request: Request, platform: str | None = None,
 
     return StreamingResponse(
         stream_release(), media_type=media_type,
-        headers={'Cache-Control': 'no-store', 'Content-Disposition': f'attachment; filename="{plan_filename(plan, platform)}"'},
+        headers={'Cache-Control': 'no-store', 'Content-Disposition': f'attachment; filename="{customer_installer_filename(plan, platform) if installer_downloads() else plan_filename(plan, platform)}"'},
     )
 
 @app.get('/api/order/{order_id}/notification')

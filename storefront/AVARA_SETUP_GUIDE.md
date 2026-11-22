@@ -4,8 +4,8 @@
 
 1. Sign in to the AVARA storefront with the account used for your order. Select Windows or Mac when ordering. Cash payment and approval are handled by the owner.
 2. After approval, open **Your orders → Download AVARA**. Mac users choose **Apple Silicon** or **Intel**. Use Apple menu → About This Mac to identify the chip.
-3. Windows receives `AVARA-1.0.1-windows-setup.exe`. Run the installer, then launch AVARA from its installed shortcut.
-4. Mac receives `AVARA-1.0.1-mac-arm64.dmg` or `AVARA-1.0.1-mac-x86_64.dmg`. Open it, drag AVARA to Applications, eject the disk image, and open the installed app.
+3. Windows receives a plan-labelled EXE, such as `AVARA-1.0.1-basic-windows-setup.exe`. Run the installer, then launch AVARA from its installed shortcut.
+4. Mac receives a plan-labelled Apple Silicon (`mac-arm64.dmg`) or Intel (`mac-x86_64.dmg`) installer. Open it, drag AVARA to Applications, eject the disk image, and open the installed app.
 5. Send the one-time code shown in AVARA and your order number to the owner. Keep AVARA open and online while the owner activates that installation.
 
 The packaged app includes Python and its application dependencies. You do not need to install Python or Node.js separately for the EXE/DMG release. Ollama is a separate optional installation if you choose local AI. A Windows installer cannot run on macOS, and a Mac DMG cannot run on Windows.
@@ -46,3 +46,5 @@ Screen understanding, microphone, camera, and app control may need the correspon
 - Older source ZIPs: use the included UNINSTALL_AVARA_WINDOWS.bat/UNINSTALL_AVARA.ps1 only for that installation. Do not remove shared Python, Node.js, or Ollama just to uninstall AVARA.
 
 Before relying on optional features, verify them in Settings/Diagnostics and perform a small real action. A successful app launch does not prove every connected service works.
+
+There are distinct download filenames for Basic, Pro, 6-Month Basic and 6-Month Pro. They share the verified app engine; paid server approval determines actual features and license duration.
