@@ -970,6 +970,9 @@ def order(data: Order, request: Request, background_tasks: BackgroundTasks):
     user_id, name, email = session(request)
     if not data.accepted or data.plan not in ('Basic — ₹150/month','Pro — ₹200/month','6-Month Basic — ₹1,000/6 months','6-Month Pro — ₹1,400/6 months') or data.addon not in ('None','Setup assistance — discuss availability'):
         raise HTTPException(400, 'Select a valid plan and accept the terms.')
+    release_platform = 'mac-arm64' if data.platform == 'mac' else data.platform
+    if installer_downloads() and not platform_release_enabled(release_platform):
+        raise HTTPException(503, platform_release_message(release_platform))
     on_render = os.getenv('RENDER') == 'true'
     test_mode = not on_render and os.getenv('AVARA_STORE_TEST_MODE') == '1' and request.client and request.client.host in ('127.0.0.1', '::1')
     transport = None
