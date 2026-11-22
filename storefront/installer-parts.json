@@ -30,66 +30,29 @@
       ]
     },
     "mac-arm64": {
-      "filename": "AVARA-1.0.1-mac-arm64.dmg",
-      "size": 193132436,
-      "sha256": "f96e903a6be5341715a9d2d086fa763926af1630d9d6a20dc3f98606eba1c1e7",
+      "filename": "AVARA-20261122-mac-arm64.dmg",
+      "size": 167761210,
+      "sha256": "7dbb2f0f530300ab580d8f936e584b3bf1bc5e2adabbeed47e0c69c4e9b554df",
       "parts": [
         {
-          "name": "AVARA-1.0.1-mac-arm64.dmg.part01",
+          "name": "AVARA-20261122-mac-arm64.dmg.part01",
           "size": 41943040,
-          "sha256": "62fb7b5863214bbba8224ce53ad55832c2a59be2ab09af4e29db80b0a2656df2"
+          "sha256": "f8849a68838f2857831513a97ce9cad87c89d15cefe5dfbe77705e268a1da108"
         },
         {
-          "name": "AVARA-1.0.1-mac-arm64.dmg.part02",
+          "name": "AVARA-20261122-mac-arm64.dmg.part02",
           "size": 41943040,
-          "sha256": "5d2a2f74ef1a825753ec23e59d073a9626093d1f873c973965cdc7b439e1e15e"
+          "sha256": "85edd6ccda0f78ff40c83c5fcd2c7485fd61739b7b1b16f277d43e6c97517482"
         },
         {
-          "name": "AVARA-1.0.1-mac-arm64.dmg.part03",
+          "name": "AVARA-20261122-mac-arm64.dmg.part03",
           "size": 41943040,
-          "sha256": "077a0d3be0bdb4baf9e0a480e926bb923e411528fb31eaef0fc32353ca754514"
+          "sha256": "cfe1e875456cefbf6f7d8fc9cc725a542a6ed0be5218c837d0f711ffe322d8fb"
         },
         {
-          "name": "AVARA-1.0.1-mac-arm64.dmg.part04",
-          "size": 41943040,
-          "sha256": "b9d352a9780413fff5bbf7b0ff05b397f947aaa8a17ecd314949fb3a6c51cf77"
-        },
-        {
-          "name": "AVARA-1.0.1-mac-arm64.dmg.part05",
-          "size": 25360276,
-          "sha256": "90eef84779a06634aac3761f9a4db10546579e551675c6332964ae476a5d1b75"
-        }
-      ]
-    },
-    "mac-x86_64": {
-      "filename": "AVARA-1.0.1-mac-x86_64.dmg",
-      "size": 204188926,
-      "sha256": "1563b7b572ce4c890001217274dd19848a0a4f8a39f4209efde01834785b6119",
-      "parts": [
-        {
-          "name": "AVARA-1.0.1-mac-x86_64.dmg.part01",
-          "size": 41943040,
-          "sha256": "14d7670f72e2734ff779cbe64e9c4156d5aafa59176b1f9c9d1fe1ae45f5a864"
-        },
-        {
-          "name": "AVARA-1.0.1-mac-x86_64.dmg.part02",
-          "size": 41943040,
-          "sha256": "14aa7ea52911244ee246b78792cf1faefdf2efca0353815188428f89aff1eeec"
-        },
-        {
-          "name": "AVARA-1.0.1-mac-x86_64.dmg.part03",
-          "size": 41943040,
-          "sha256": "7f29d19f15fe45d9132c8d2e04feb4e02fbdfb3ef51948471e74ae9915877bb2"
-        },
-        {
-          "name": "AVARA-1.0.1-mac-x86_64.dmg.part04",
-          "size": 41943040,
-          "sha256": "be6196d5ef760dc667eb54860afa762d83e39f37cf4d0c990528c09415c74ed7"
-        },
-        {
-          "name": "AVARA-1.0.1-mac-x86_64.dmg.part05",
-          "size": 36416766,
-          "sha256": "31146ac5578f42e6812d0a6718d5fc4c4390c247d558c56875e808656555ed99"
+          "name": "AVARA-20261122-mac-arm64.dmg.part04",
+          "size": 41932090,
+          "sha256": "bc6ae5a931a6dcb2f4c877f7a8b4e08f1e3f7e7f965059c0573b90f74a754993"
         }
       ]
     }

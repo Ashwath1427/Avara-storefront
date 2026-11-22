@@ -19,7 +19,7 @@ from contextlib import asynccontextmanager, contextmanager
 from pathlib import Path
 
 from fastapi import BackgroundTasks, FastAPI, HTTPException, Request, Response
-from fastapi.responses import FileResponse, HTMLResponse, StreamingResponse
+from fastapi.responses import FileResponse, StreamingResponse
 from pydantic import BaseModel, Field
 
 ROOT = Path(__file__).resolve().parent
@@ -344,7 +344,6 @@ _release_ready_cache = {}
 INSTALLER_FILES = {
     "windows": (f"AVARA-{INSTALLER_VERSION}-windows-setup.exe", "application/vnd.microsoft.portable-executable"),
     "mac-arm64": (f"AVARA-{INSTALLER_VERSION}-mac-arm64.dmg", "application/x-apple-diskimage"),
-    "mac-x86_64": (f"AVARA-{INSTALLER_VERSION}-mac-x86_64.dmg", "application/x-apple-diskimage"),
 }
 
 
@@ -356,7 +355,7 @@ def plan_filename(plan: str, platform: str = 'windows'):
     if installer_downloads():
         key = "mac-arm64" if platform == "mac" else platform
         if key not in INSTALLER_FILES:
-            raise HTTPException(400, "Choose Windows, Mac Apple Silicon, or Mac Intel.")
+            raise HTTPException(400, "Choose Windows or Mac Apple Silicon.")
         return INSTALLER_FILES[key][0]
     if platform not in ('windows', 'mac'):
         raise HTTPException(400, 'Choose Windows or Mac.')
@@ -402,7 +401,7 @@ def publish_release_catalog(request: Request):
             result.read(4096)
     except (HTTPError, OSError, ValueError):
         raise HTTPException(503, 'Could not sync the private release catalog. Try again.')
-    return {'message': 'Release catalog synced to Supabase: 12 plan downloads using 14 shared installer parts.'}
+    return {'message': 'Release catalog synced to Supabase: 8 plan downloads using shared installer parts.'}
 
 
 def plan_bundle(plan: str, platform: str = 'windows'):
@@ -480,7 +479,7 @@ def stream_installer_parts(requests, metadata, first_response):
 
 def plan_bundle_ready(plan: str, platform: str = 'windows'):
     if installer_downloads() and platform == "mac":
-        return all(plan_bundle_ready(plan, variant) for variant in ("mac-arm64", "mac-x86_64"))
+        return plan_bundle_ready(plan, "mac-arm64")
     if plan_bundle(plan, platform).is_file():
         return True
     metadata = installer_parts(platform)
@@ -559,19 +558,9 @@ def download_order(order_id: int, request: Request, platform: str | None = None,
     media_type = "application/zip"
     if installer_downloads():
         if platform == "mac":
-            if architecture is None:
-                return HTMLResponse(f'''<!doctype html><html lang="en"><head>
-<meta charset="utf-8"><meta name="viewport" content="width=device-width, initial-scale=1">
-<title>Choose your Mac · AVARA</title><style>
-:root{{color-scheme:dark}}*{{box-sizing:border-box}}body{{margin:0;background:#0a0a10;color:#fff;font:18px/1.6 system-ui,sans-serif;padding:32px}}main{{max-width:620px;margin:10vh auto;background:#13131c;border:1px solid #34344a;border-radius:20px;padding:32px}}p{{color:#d4d4e0}}a{{color:#9db0ff}}.button{{display:block;padding:16px;margin:16px 0;border-radius:12px;background:#3b5bff;color:white;text-decoration:none;font-weight:600}}a:focus-visible{{outline:2px solid #9db0ff;outline-offset:4px}}
-</style></head><body><main><h1>Choose your Mac</h1>
-<p>Open the Apple menu → About This Mac. If it shows an Apple M-series chip, choose Apple Silicon. If it shows an Intel processor, choose Intel.</p>
-<a class="button" href="/api/order/{order_id}/download?architecture=arm64">Download for Mac Apple Silicon</a>
-<a class="button" href="/api/order/{order_id}/download?architecture=x86_64">Download for Mac Intel</a>
-<p>You will receive one DMG file for your Mac.</p><a href="/#order">Back to your orders</a></main></body></html>''', headers={'Cache-Control': 'no-store'})
-            if architecture not in ("arm64", "x86_64"):
-                raise HTTPException(400, "Choose Mac Apple Silicon or Mac Intel.")
-            platform = "mac-" + architecture
+            if architecture not in (None, "arm64"):
+                raise HTTPException(400, "This release supports Apple Silicon Macs only.")
+            platform = "mac-arm64"
         media_type = INSTALLER_FILES[platform][1]
     bundle = plan_bundle(plan, platform)
     if bundle.is_file():

@@ -141,7 +141,7 @@
       </ul>
     </figure>
   </header>
-  <section id="plans"><div class="eyebrow">FLEXIBLE AVARA PLANS</div><h2 class="section-title">Choose the access that fits you</h2><p class="fine">AVARA for Windows is available now. AVARA for Mac is in testing; when ready, your approved order will show a separate Mac download.</p><div class="plans">
+  <section id="plans"><div class="eyebrow">FLEXIBLE AVARA PLANS</div><h2 class="section-title">Choose the access that fits you</h2><p class="fine">AVARA is available for Windows and Apple Silicon Macs (macOS 14 or later).</p><div class="plans">
     <article class="card"><div class="eyebrow">AVARA BASIC · LAUNCH OFFER</div><div class="price"><span class="old-price">₹299</span> ₹150 <small>/ month</small></div><p class="fine">A capable everyday assistant.</p><ul><li>Desktop assistant and chat</li><li>Tasks, local calendar, reminders, and day planner</li><li>Study tools, scripts, and workout tracking</li><li>Phone remote on your private Wi-Fi</li><li>Standard AI usage allowance</li></ul><button class="btn choose" data-plan="Basic">Choose Basic</button></article>
     <article class="card featured"><div class="eyebrow">AVARA PRO · LAUNCH OFFER</div><div class="price"><span class="old-price">₹599</span> ₹200 <small>/ month</small></div><p class="fine">The complete AVARA experience.</p><ul><li>Everything in Basic</li><li>Website and presentation creation</li><li>Google Workspace connections when configured</li><li>Higher AI and voice usage allowance</li><li>Priority support, with cloud backup coming soon</li></ul><button class="btn choose" data-plan="Pro">Choose Pro</button></article>
     <article class="card"><div class="eyebrow">6-MONTH BASIC</div><div class="price">₹1,000 <small>/ 6 months</small></div><p class="fine">Basic access for 180 days with one payment.</p><ul><li>AVARA Basic features</li><li>Double the Basic screen, website and presentation allowances per activation</li><li>Priority support</li><li>Use your configured Groq, Gemini or Ollama models</li></ul><button class="btn choose" data-plan="6-Month Basic">Choose 6-Month Basic</button></article>
@@ -192,7 +192,7 @@
       </form>
     </div>
     <p id="signed-in" hidden></p>
-    <form id="order-form" hidden><div class="formgrid"><label>Plan<select id="plan" required><option value="">Select a plan</option><option>Basic — ₹150/month</option><option>Pro — ₹200/month</option><option>6-Month Basic — ₹1,000/6 months</option><option>6-Month Pro — ₹1,400/6 months</option></select></label><label>Operating system<select id="platform" required><option value="">Select Windows or Mac</option><option value="windows">Windows</option><option value="mac">Mac — in testing</option></select></label><label>Optional add-on<select id="addon"><option>None</option><option>Setup assistance — discuss availability</option></select></label></div><p class="fine">Choose the computer this order is for. The Mac edition is still being tested.</p>
+    <form id="order-form" hidden><div class="formgrid"><label>Plan<select id="plan" required><option value="">Select a plan</option><option>Basic — ₹150/month</option><option>Pro — ₹200/month</option><option>6-Month Basic — ₹1,000/6 months</option><option>6-Month Pro — ₹1,400/6 months</option></select></label><label>Operating system<select id="platform" required><option value="">Select Windows or Mac</option><option value="windows">Windows</option><option value="mac">Mac — Apple Silicon</option></select></label><label>Optional add-on<select id="addon"><option>None</option><option>Setup assistance — discuss availability</option></select></label></div><p class="fine">Choose the computer this order is for. Mac requires Apple Silicon and macOS 14 or later.</p>
       <label class="terms"><input id="accept" type="checkbox" required> I accept the <a href="terms.html" target="_blank" rel="noopener">Terms and Conditions</a> and <a href="privacy.html" target="_blank" rel="noopener">Privacy Notice</a>.</label>
       <p class="fine">Payment method: cash. Payment and delivery arrangements are confirmed separately.</p>
       <button class="btn" id="order-submit" type="submit">Request cash order</button>
@@ -265,27 +265,7 @@ async function loadOrders() {
         download.className = 'btn';
         download.href = '/api/order/' + order.id + '/download';
         download.textContent = 'Download AVARA for ' + (order.platform === 'mac' ? 'Mac' : 'Windows');
-        if (order.installer_downloads && order.platform === 'mac') {
-          const label = document.createElement('label');
-          label.textContent = 'Your Mac';
-          const chip = document.createElement('select');
-          const choices = [['', 'Choose your Mac'], ['arm64', 'Apple Silicon (M1 or newer)'], ['x86_64', 'Intel']];
-          for (const [value, text] of choices) {
-            const option = document.createElement('option');
-            option.value = value; option.textContent = text; chip.append(option);
-          }
-          chip.onchange = () => {
-            download.href = '/api/order/' + order.id + '/download?architecture=' + encodeURIComponent(chip.value);
-          };
-          download.onclick = event => {
-            if (!chip.value) { event.preventDefault(); chip.focus(); }
-          };
-          const hint = document.createElement('p');
-          hint.className = 'fine';
-          hint.textContent = 'Not sure? Apple menu → About This Mac. Chip: Apple M… means Apple Silicon.';
-          label.append(chip);
-          card.append(label, hint);
-        }
+        if (order.platform === 'mac') { const hint=document.createElement('p'); hint.className='fine'; hint.textContent='Mac: Apple Silicon (M1 or newer), macOS 14 or later.'; card.append(hint); }
         card.append(download);
       } else if (order.status === 'approved') {
         const unavailable = document.createElement('span');

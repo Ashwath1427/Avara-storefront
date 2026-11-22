@@ -26,7 +26,7 @@ class InstallerDeliveryTests(unittest.TestCase):
                         con.execute("INSERT INTO orders(id,user_id,plan,platform,addon,terms_version,created,status) VALUES (?,1,?,?,'None','test',0,'approved')", (number, plan, platform))
                 request = SimpleNamespace(headers={})
                 for number in range(1, 9):
-                    variants = ("windows",) if number % 2 else ("mac-arm64", "mac-x86_64")
+                    variants = ("windows",) if number % 2 else ("mac-arm64",)
                     for platform in variants:
                         architecture = None if platform == "windows" else platform.removeprefix("mac-")
                         response = server.download_order(number, request, architecture=architecture)
@@ -34,13 +34,7 @@ class InstallerDeliveryTests(unittest.TestCase):
                         plan = ("Basic", "Pro", "6-Month Basic", "6-Month Pro")[(number-1)//2]
                         self.assertEqual(response.filename, server.customer_installer_filename(plan, platform))
                         self.assertEqual(response.media_type, server.INSTALLER_FILES[platform][1])
-                chooser = server.download_order(2, request)
-                self.assertEqual(chooser.status_code, 200)
-                self.assertEqual(chooser.media_type, 'text/html')
-                self.assertIn(b'architecture=arm64', chooser.body)
-                self.assertIn(b'architecture=x86_64', chooser.body)
-                self.assertEqual(chooser.headers['cache-control'], 'no-store')
-                for number, kwargs, status in [(2, {'architecture': 'invalid'}, 400), (1, {"platform": "mac"}, 403)]:
+                for number, kwargs, status in [(2, {'architecture': 'x86_64'}, 400), (1, {"platform": "mac"}, 403)]:
                     with self.assertRaises(HTTPException) as error:
                         server.download_order(number, request, **kwargs)
                     self.assertEqual(error.exception.status_code, status)

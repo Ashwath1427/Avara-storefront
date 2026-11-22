@@ -15,9 +15,9 @@
 <h2>Download and install</h2>
 <ul>
 <li>Sign in to the AVARA storefront with the account used for your order. Select Windows or Mac when ordering. Cash payment and approval are handled by the owner.</li>
-<li>After approval, open <strong>Your orders → Download AVARA</strong>. Mac users choose <strong>Apple Silicon</strong> or <strong>Intel</strong>. Use Apple menu → About This Mac to identify the chip.</li>
+<li>After approval, open <strong>Your orders → Download AVARA</strong>. Mac requires Apple Silicon and macOS 14 or later. Use Apple menu → About This Mac to check.</li>
 <li>Windows receives a plan-labelled EXE, such as <code>AVARA-1.0.1-basic-windows-setup.exe</code>. Run the installer, then launch AVARA from its installed shortcut.</li>
-<li>Mac receives a plan-labelled Apple Silicon (<code>mac-arm64.dmg</code>) or Intel (<code>mac-x86_64.dmg</code>) installer. Open it, drag AVARA to Applications, eject the disk image, and open the installed app.</li>
+<li>Mac receives a plan-labelled Apple Silicon (<code>mac-arm64.dmg</code>) installer. Open it, drag AVARA to Applications, eject the disk image, and open the installed app.</li>
 <li>Send the one-time code shown in AVARA and your order number to the owner. Keep AVARA open and online while the owner activates that installation.</li>
 </ul>
 <p>The packaged app includes Python and its application dependencies. You do not need to install Python or Node.js separately for the EXE/DMG release. Ollama is a separate optional installation if you choose local AI. A Windows installer cannot run on macOS, and a Mac DMG cannot run on Windows.</p>
@@ -39,7 +39,7 @@
 <h2>Troubleshooting and uninstall</h2>
 <ul>
 <li>Missing download: refresh orders and sign in to the ordering account again. An approved order is required.</li>
-<li>Mac chip error from an old link: reopen the download; the chip-choice page now provides both choices.</li>
+<li>Mac compatibility: the current release requires Apple Silicon and macOS 14 or later.</li>
 <li>Activation cannot connect: confirm internet access, wait for the hosting service to wake, retry, and contact support with the order number and a redacted log if it persists.</li>
 <li>AI offline: test your chosen provider, key, quota, or running Ollama model.</li>
 <li>Startup failure: read AVARA&#x27;s log under Local AppData/AVARA/logs on Windows or Library/Application Support/AVARA/logs on Mac. Share only a redacted error excerpt.</li>

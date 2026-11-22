@@ -3,9 +3,9 @@
 ## Download and install
 
 1. Sign in to the AVARA storefront with the account used for your order. Select Windows or Mac when ordering. Cash payment and approval are handled by the owner.
-2. After approval, open **Your orders → Download AVARA**. Mac users choose **Apple Silicon** or **Intel**. Use Apple menu → About This Mac to identify the chip.
+2. After approval, open **Your orders → Download AVARA**. Mac requires Apple Silicon and macOS 14 or later. Use Apple menu → About This Mac to check.
 3. Windows receives a plan-labelled EXE, such as `AVARA-1.0.1-basic-windows-setup.exe`. Run the installer, then launch AVARA from its installed shortcut.
-4. Mac receives a plan-labelled Apple Silicon (`mac-arm64.dmg`) or Intel (`mac-x86_64.dmg`) installer. Open it, drag AVARA to Applications, eject the disk image, and open the installed app.
+4. Mac receives a plan-labelled Apple Silicon (`mac-arm64.dmg`) installer. Open it, drag AVARA to Applications, eject the disk image, and open the installed app.
 5. Send the one-time code shown in AVARA and your order number to the owner. Keep AVARA open and online while the owner activates that installation.
 
 The packaged app includes Python and its application dependencies. You do not need to install Python or Node.js separately for the EXE/DMG release. Ollama is a separate optional installation if you choose local AI. A Windows installer cannot run on macOS, and a Mac DMG cannot run on Windows.
@@ -37,7 +37,7 @@ Screen understanding, microphone, camera, and app control may need the correspon
 ## Troubleshooting and uninstall
 
 - Missing download: refresh orders and sign in to the ordering account again. An approved order is required.
-- Mac chip error from an old link: reopen the download; the chip-choice page now provides both choices.
+- Mac compatibility: the current release requires Apple Silicon and macOS 14 or later.
 - Activation cannot connect: confirm internet access, wait for the hosting service to wake, retry, and contact support with the order number and a redacted log if it persists.
 - AI offline: test your chosen provider, key, quota, or running Ollama model.
 - Startup failure: read AVARA's log under Local AppData/AVARA/logs on Windows or Library/Application Support/AVARA/logs on Mac. Share only a redacted error excerpt.
