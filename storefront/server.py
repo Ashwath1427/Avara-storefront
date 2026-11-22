@@ -351,6 +351,16 @@ def installer_downloads():
     return os.getenv("AVARA_INSTALLER_DOWNLOADS", str(PART_RELEASE.get("enabled", False)).lower()) == "true"
 
 
+def platform_release_enabled(platform: str) -> bool:
+    release = PART_RELEASE.get("platforms", {}).get(platform)
+    return bool(release and release.get("enabled", True))
+
+
+def platform_release_message(platform: str) -> str:
+    release = PART_RELEASE.get("platforms", {}).get(platform, {})
+    return release.get("message") or "This platform release is temporarily unavailable."
+
+
 def plan_filename(plan: str, platform: str = 'windows'):
     if installer_downloads():
         key = "mac-arm64" if platform == "mac" else platform
@@ -379,7 +389,8 @@ def release_catalog():
             'downloads': [dict(plan=plan, price_inr=price, term_days=days, platform=platform,
                                filename=customer_installer_filename(plan, platform),
                                size=release['size'], sha256=release['sha256'], parts=release['parts'])
-                          for plan, price, days in plans for platform, release in PART_RELEASE['platforms'].items()]}
+                          for plan, price, days in plans for platform, release in PART_RELEASE['platforms'].items()
+                          if platform_release_enabled(platform)]}
 
 
 @app.post('/api/admin/releases/publish-catalog')
@@ -388,6 +399,8 @@ def publish_release_catalog(request: Request):
     if not installer_downloads() or not PART_RELEASE.get('enabled'):
         raise HTTPException(409, 'Native installer delivery must be enabled first.')
     for platform in INSTALLER_FILES:
+        if not platform_release_enabled(platform):
+            continue
         if not plan_bundle_ready('Basic', platform):
             raise HTTPException(409, 'A required installer part is missing. Catalog was not published.')
     upload = storage_request('Basic', method='POST', object_name='release-catalog.json')
@@ -401,7 +414,8 @@ def publish_release_catalog(request: Request):
             result.read(4096)
     except (HTTPError, OSError, ValueError):
         raise HTTPException(503, 'Could not sync the private release catalog. Try again.')
-    return {'message': 'Release catalog synced to Supabase: 8 plan downloads using shared installer parts.'}
+    count = len(release_catalog()['downloads'])
+    return {'message': f'Release catalog synced to Supabase: {count} available plan downloads using shared installer parts.'}
 
 
 def plan_bundle(plan: str, platform: str = 'windows'):
@@ -438,7 +452,7 @@ def storage_request(plan: str, method='GET', platform: str = 'windows', object_n
 
 
 def installer_parts(platform):
-    if installer_downloads() and PART_RELEASE.get("enabled"):
+    if installer_downloads() and PART_RELEASE.get("enabled") and platform_release_enabled(platform):
         return PART_RELEASE.get("platforms", {}).get(platform)
     return None
 
@@ -480,6 +494,8 @@ def stream_installer_parts(requests, metadata, first_response):
 def plan_bundle_ready(plan: str, platform: str = 'windows'):
     if installer_downloads() and platform == "mac":
         return plan_bundle_ready(plan, "mac-arm64")
+    if installer_downloads() and not platform_release_enabled(platform):
+        return False
     if plan_bundle(plan, platform).is_file():
         return True
     metadata = installer_parts(platform)
@@ -561,6 +577,8 @@ def download_order(order_id: int, request: Request, platform: str | None = None,
             if architecture not in (None, "arm64"):
                 raise HTTPException(400, "This release supports Apple Silicon Macs only.")
             platform = "mac-arm64"
+        if not platform_release_enabled(platform):
+            raise HTTPException(503, platform_release_message(platform))
         media_type = INSTALLER_FILES[platform][1]
     bundle = plan_bundle(plan, platform)
     if bundle.is_file():

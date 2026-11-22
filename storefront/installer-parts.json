@@ -3,6 +3,9 @@
   "version": "1.0.1",
   "platforms": {
     "windows": {
+      "enabled": false,
+      "status": "withdrawn-pending-security-review",
+      "message": "The Windows release is temporarily unavailable while a Defender detection is investigated.",
       "filename": "AVARA-1.0.1-windows-setup.exe",
       "size": 136949846,
       "sha256": "3f656d2819e67910e5757f7413911cced7f333e39ecf439e822c77a69d47c7af",
@@ -30,6 +33,7 @@
       ]
     },
     "mac-arm64": {
+      "enabled": true,
       "filename": "AVARA-20261122-mac-arm64.dmg",
       "size": 167761210,
       "sha256": "7dbb2f0f530300ab580d8f936e584b3bf1bc5e2adabbeed47e0c69c4e9b554df",

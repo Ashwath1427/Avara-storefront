@@ -23,6 +23,8 @@ Required private settings include the existing database URI, `SUPABASE_URL`, `SU
 
 Native delivery is enabled by the checked-in `installer-parts.json` manifest; `AVARA_INSTALLER_DOWNLOADS` can override the mode. The manifest is the authoritative filename, size, SHA-256 and ordered part inventory. Every manifest part is required. A local matching installer can also be served by the existing server file lookup. Do not change mode to source ZIP delivery after removing the legacy ZIPs unless they are deliberately restored.
 
+Windows 1.0.1 is withdrawn from customer delivery while the `Trojan:Win32/Bearfoos.A!ml` Defender detection reported on an installed `AVARA.exe` is investigated. The stored numbered Windows parts are retained for evidence and hash comparison, but `enabled: false` prevents order downloads and excludes Windows from the published release catalog. Do not re-enable it merely because a local custom scan is clean. Re-enable only after source review, a newly built and Authenticode-signed release, Microsoft sample-analysis results, clean scans on fresh Windows machines, and an installation smoke test.
+
 ## Storage inventory
 
 | Target | Single customer download | Internal parts | Total bytes |
