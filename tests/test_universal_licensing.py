@@ -609,6 +609,21 @@ class AppAccountAndEmailTests(StoreTestCase):
         self.assertIn('Your payment of ₹200 will be refunded to your UPI ID by 25 November.', cancel_body)
         self.assertIn("If you think this was a mistake, reply to this email and I'll help.", cancel_body)
 
+    def test_owner_list_mixes_website_and_app_orders_newest_first(self):
+        self.sign('create')
+        self.client.post('/api/v2/installations/register', json={'token': token(1), 'plan_id': 'pro'})
+        with server.db() as con:
+            user_id = con.execute('SELECT id FROM users').fetchone()[0]
+            con.execute("INSERT INTO orders(id,user_id,plan,addon,terms_version,created,status,platform) VALUES "
+                        "(10,?,?,'none','draft-1',?,'approved','mac')", (user_id, '6-Month Pro — ₹1,400/6 months', int(time.time()) - 3600))
+            con.execute("INSERT INTO orders(id,user_id,plan,addon,terms_version,created,status,platform,deleted_at) VALUES "
+                        "(9,?,'Pro — ₹200/month','none','draft-1',?,'approved','windows',?)", (user_id, int(time.time()) - 7200, int(time.time())))
+        self.login()
+        orders = self.client.get('/api/owner/license-orders', params={'status': 'all'}).json()['orders']
+        self.assertEqual([(o.get('source', 'app'), o['plan_name']) for o in orders], [('app', 'Pro'), ('website', '6-Month Pro')])
+        self.assertEqual(orders[1]['price_inr'], 1400)
+        self.assertEqual(self.client.get('/api/owner/license-orders', params={'status': 'approved'}).json()['orders'][0]['id'], 10)
+
     def test_brevo_sends_from_a_verified_gmail_without_a_domain(self):
         captured = {}
 

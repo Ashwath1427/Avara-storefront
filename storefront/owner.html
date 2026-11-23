@@ -70,7 +70,6 @@
     <nav class="tabs" role="tablist">
       <button role="tab" data-tab="codes" aria-selected="true">Codes &amp; orders</button>
       <button role="tab" data-tab="installs" aria-selected="false">Installations</button>
-      <button role="tab" data-tab="legacy" aria-selected="false">Website orders (old)</button>
       <button role="tab" data-tab="reviews" aria-selected="false">Reviews</button>
       <button role="tab" data-tab="emails" aria-selected="false">Emails</button>
       <button role="tab" data-tab="audit" aria-selected="false">Audit log</button>
@@ -144,6 +143,7 @@
 </main><script>
 const $ = id => document.getElementById(id);
 let csrf = '', activeTab = 'codes', liveTimer = null, plans = [];
+const planNames = {basic: 'Basic', pro: 'Pro', six_month_basic: '6-Month Basic', six_month_pro: '6-Month Pro', owner: 'Owner'};
 const when = s => s ? new Date(s * 1000).toLocaleString(undefined, {dateStyle: 'medium', timeStyle: 'short'}) : '—';
 const inr = v => '₹' + Number(v || 0).toLocaleString('en-IN');
 const el = (tag, cls, text) => { const node = document.createElement(tag); if (cls) node.className = cls; if (text !== undefined) node.textContent = text; return node; };
@@ -209,17 +209,18 @@ async function loadCodes(quiet) {
 }
 function renderCode(order, now) {
   const card = el('article', 'item'), info = el('div');
-  const title = el('h2', '', 'Order #' + order.id + ' · ' + order.plan_name + ' · ' + inr(order.price_inr)); title.append(pill(order.status));
+  const web = order.source === 'website';
+  const title = el('h2', '', 'Order #' + order.id + (web ? ' (website)' : '') + ' · ' + order.plan_name + (order.price_inr != null ? ' · ' + inr(order.price_inr) : '')); title.append(pill(order.status));
   const code = el('div', 'code', order.code_hint);
   const left = order.code_expires - now;
   const timing = el('div', 'meta', 'Created ' + when(order.created) + (order.status === 'pending' ? ' · code expires in ' + Math.max(0, Math.floor(left / 3600)) + ' h ' + Math.max(0, Math.floor(left % 3600 / 60)) + ' min' : '') + (order.decided_at ? ' · decided ' + when(order.decided_at) : ''));
-  const device = el('div', 'meta', (order.platform === 'mac' ? 'Mac' : order.platform === 'windows' ? 'Windows' : order.platform) + ' · app ' + (order.app_version || '?') + ' · ' + order.installation_id + (order.payment_reference ? ' · payment: ' + order.payment_reference : '') + (order.note ? ' · note: ' + order.note : ''));
+  const device = el('div', 'meta', (order.platform === 'mac' ? 'Mac' : order.platform === 'windows' ? 'Windows' : order.platform) + (web ? '' : ' · app ' + (order.app_version || '?')) + (order.installation_id ? ' · ' + order.installation_id : '') + (order.payment_reference ? ' · payment: ' + order.payment_reference : '') + (order.note ? ' · note: ' + order.note : ''));
   const who = el('div', 'who', order.customer_email ? (order.customer_name || '') + ' · ' + order.customer_email : 'No account linked');
   info.append(title, who, code, timing, device);
-  if (order.entitlement_state) info.append(el('div', 'meta', 'Current plan on this computer: ' + order.entitlement_plan_id + ' · ' + order.entitlement_state + ' until ' + when(order.entitlement_expires)));
+  if (order.entitlement_state) info.append(el('div', 'meta', 'Current plan: ' + (planNames[order.entitlement_plan_id] || order.entitlement_plan_id) + ' · ' + order.entitlement_state + (order.entitlement_plan_id === 'owner' ? '' : ' until ' + when(order.entitlement_expires))));
   const actions = el('div', 'actions');
-  actions.append(button('Email', 'secondary', () => openEmail(order.customer_email ? {installation_id: order.installation_id} : null, order.customer_name, order.customer_email, 'Your AVARA order #' + order.id)));
-  if (order.status === 'pending') {
+  actions.append(button('Email', 'secondary', () => openEmail(order.customer_email && !web ? {installation_id: order.installation_id} : null, order.customer_name, order.customer_email, 'Your AVARA order #' + order.id)));
+  if (order.status === 'pending' && !web) {
     actions.append(button('Approve', '', async () => {
       if (!confirm('Approve order #' + order.id + ' (' + order.plan_name + ', ' + inr(order.price_inr) + ')? Only approve after you have received the payment.')) return;
       const result = await api('/api/owner/license-orders/approve', 'POST', {order_id: order.id}); notice(result.message + (result.emailed ? ' The customer was emailed.' : '')); loadCodes(true);

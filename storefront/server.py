@@ -2143,7 +2143,50 @@ def owner_license_orders(request: Request, response: Response, status: str = 'al
             "SELECT CASE WHEN o.status='pending' AND c.expires_at<=? THEN 'expired' ELSE o.status END, COUNT(*) "
             'FROM license_orders o JOIN activation_codes c ON c.code_hash=o.code_hash GROUP BY 1', (now,),
         ).fetchall())
+        # One list for everything: orders from the old website sit among the app orders, newest first.
+        website = _website_order_rows(con, status, q, now)
+    for item in website:
+        counts[item['status']] = counts.get(item['status'], 0) + 1
+    orders = sorted(orders + website, key=lambda item: item['created'] or 0, reverse=True)
     return {'orders': orders, 'counts': counts, 'server_time': now}
+
+
+def _website_order_rows(con, status: str, q: str, now: int):
+    """Old website orders (not deleted) shaped like app orders, for the combined owner list."""
+    if status in ('expired', 'superseded') or (q and licensing.normalize_code(q)) or re.fullmatch(r'ins_[0-9a-f]{24}', q or ''):
+        return []
+    try:
+        rows = con.execute(
+            '''SELECT o.id, o.plan, o.status, o.created, o.approved_at, o.platform, u.name, u.email,
+                      e.state, e.expires_at, e.plan_id, e.installation_id
+               FROM orders o JOIN users u ON u.id=o.user_id LEFT JOIN entitlements e ON e.legacy_order_id=o.id
+               WHERE o.deleted_at IS NULL ORDER BY o.id DESC LIMIT 200''').fetchall()
+    except sqlite3.Error:
+        return []
+    items = []
+    for r in rows:
+        label = str(r[1] or '')
+        name = label.split(' — ')[0].strip() or label
+        price = re.search(r'₹\s*([0-9][0-9,]*)', label)
+        item = {'id': r[0], 'source': 'website', 'status': r[2], 'plan_id': None, 'plan_name': name,
+                'price_inr': int(price.group(1).replace(',', '')) if price else None, 'created': r[3],
+                'code_expires': None, 'code_status': None, 'code_hint': 'Website order (no app code)',
+                'installation_id': r[11] or '', 'platform': r[5], 'app_version': None, 'last_seen': None,
+                'decided_at': r[4], 'decided_by': None, 'payment_reference': None, 'entitlement_state': r[8],
+                'entitlement_expires': r[9], 'entitlement_plan_id': r[10], 'note': None,
+                'customer_name': r[6], 'customer_email': r[7]}
+        if status == 'pending' and item['status'] != 'pending':
+            continue
+        if status in ('approved', 'rejected') and item['status'] != status:
+            continue
+        if status == 'recent' and not (item['status'] == 'pending' or (item['decided_at'] or 0) >= now - 86400):
+            continue
+        if q and '@' in q and (item['customer_email'] or '').lower() != q.strip().lower():
+            continue
+        if q and re.fullmatch(r'#?[0-9]{1,12}', q.strip()) and item['id'] != int(q.strip().lstrip('#')):
+            continue
+        items.append(item)
+    return items
 
 
 def _owner_refusal(actor, action, target, error: LicenseError, ip):
