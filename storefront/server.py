@@ -1544,7 +1544,8 @@ def signed_status(payload, code, account=None):
 EMAIL_SUBJECTS = {
     'order_received': 'Your AVARA order: {plan}',
     'approved': 'Your AVARA {plan} is approved ✅',
-    'rejected': 'Your AVARA order was not approved',
+    'rejected': 'Your AVARA order {code} has been cancelled',
+    'on_hold': 'Your AVARA order {code} is on hold',
     'paused': 'Your AVARA plan is paused',
     'resumed': 'Your AVARA plan is active again',
     'cancelled': 'Your AVARA plan was cancelled',
@@ -1573,6 +1574,11 @@ OWNER_EMAILS = [item.strip().lower() for item in os.environ.get('AVARA_OWNER_EMA
 OWNER_SIGNATURE = os.getenv('AVARA_OWNER_SIGNATURE', 'Ashwath').strip() or 'Ashwath'
 
 
+def _clause(text) -> str:
+    """Owner-typed text placed mid-sentence: trimmed, without a trailing full stop."""
+    return str(text or '').strip().rstrip('.')
+
+
 def customer_email_body(kind: str, name: str, details: dict) -> str:
     plan, price = details.get('plan', 'AVARA'), details.get('price_inr')
     if kind == 'approved':  # the owner's own approval template
@@ -1583,6 +1589,28 @@ def customer_email_body(kind: str, name: str, details: dict) -> str:
                 f"Plan: {plan}\nActive until: {until}\n\n"
                 "If it doesn't unlock, just reply to this email and I'll sort it out.\n\n"
                 f"Welcome to AVARA!\n{OWNER_SIGNATURE}\nAVARA · Your desktop. Your AI.")
+    if kind == 'on_hold':
+        need = details.get('need')
+        return (f"Hi {name},\n\n"
+                f"Thanks for your order! I've put it on hold for now because {_clause(details.get('reason'))}.\n\n"
+                "Nothing is lost. Once this is sorted, I'll approve it and AVARA will unlock straight away.\n\n"
+                + (f"What I need from you: {_clause(need)}.\n\n" if need else '') +
+                "Please note: your code expires 48 hours after it was created. If it runs out, just choose your plan "
+                "again in AVARA to get a new code.\n\n"
+                f"Thanks for your patience,\n{OWNER_SIGNATURE}\nAVARA · Your desktop. Your AI.")
+    if kind == 'rejected':
+        code, reason = details.get('code') or '', details.get('reason')
+        refund = ''
+        if details.get('refund_amount'):
+            refund = (f"Your payment of {details['refund_amount']} will be refunded"
+                      + (f" to {_clause(details['refund_to'])}" if details.get('refund_to') else '')
+                      + (f" by {_clause(details['refund_by'])}" if details.get('refund_by') else '') + ".\n\n")
+        return (f"Hi {name},\n\n"
+                f"Your AVARA order {code} for the {plan} plan has been cancelled"
+                + (f" because {_clause(reason)}" if reason else '') + ".\n\n" + refund +
+                "If you'd like to order again, just open AVARA and choose your plan to get a new code.\n\n"
+                "If you think this was a mistake, reply to this email and I'll help.\n\n"
+                f"Thanks,\n{OWNER_SIGNATURE}\nAVARA · Your desktop. Your AI.")
     lines = {
         'order_received': [f'Thank you for choosing AVARA {plan}' + (f' (₹{price:,})' if price else '') + '.',
                            f"Your one-time code is {details.get('code')}." if details.get('code') else '',
@@ -1608,7 +1636,8 @@ def queue_customer_email(background_tasks, contact, kind: str, details: dict | N
         return False
     user_id, name, email = contact
     details = details or {}
-    subject = subject or EMAIL_SUBJECTS.get(kind, 'A message about your AVARA account').format(plan=details.get('plan', 'AVARA'))
+    subject = subject or ' '.join(EMAIL_SUBJECTS.get(kind, 'A message about your AVARA account').format(
+        plan=details.get('plan', 'AVARA'), code=details.get('code') or '').split())
     body = body if body is not None else customer_email_body(kind, name, details)
     background_tasks.add_task(_deliver_customer_email, user_id, email, kind, subject, body, ref)
     return True
@@ -2006,7 +2035,8 @@ def owner_session_info(request: Request, response: Response):
     actor = owner_session(request)
     response.headers['Cache-Control'] = 'no-store'
     token = (getattr(request, 'cookies', None) or {}).get(OWNER_COOKIE, '')
-    return {'actor': actor, 'csrf': owner_csrf(token) if token and actor.startswith('owner:session:') else None}
+    return {'actor': actor, 'csrf': owner_csrf(token) if token and actor.startswith('owner:session:') else None,
+            'signature': OWNER_SIGNATURE}
 
 
 @app.post('/api/owner/logout')
@@ -2032,6 +2062,14 @@ class CodeApprovalRequest(BaseModel):
 
 class OrderRejection(BaseModel):
     reason: str | None = Field(default=None, max_length=300)
+    refund_amount: str | None = Field(default=None, max_length=40)   # e.g. "₹200"; empty = no refund line
+    refund_to: str | None = Field(default=None, max_length=120)      # e.g. "your UPI ID" / "in cash"
+    refund_by: str | None = Field(default=None, max_length=60)       # e.g. "25 Nov"
+
+
+class OrderHold(BaseModel):
+    reason: str = Field(min_length=1, max_length=300)
+    need: str | None = Field(default=None, max_length=300)
 
 
 class EntitlementChange(BaseModel):
@@ -2161,16 +2199,44 @@ def owner_reject_order(order_id: int, data: OrderRejection, request: Request, ba
     now = int(time.time())
     with db() as con:
         require_licensing(con)
-        row = con.execute('SELECT code_hash, installation_id FROM license_orders WHERE id=? AND status=?', (order_id, 'pending')).fetchone()
+        row = con.execute('SELECT o.code_hash, o.installation_id, c.hint, p.name, o.price_inr FROM license_orders o '
+                          'JOIN activation_codes c ON c.code_hash=o.code_hash JOIN plans p ON p.id=o.plan_id '
+                          'WHERE o.id=? AND o.status=?', (order_id, 'pending')).fetchone()
         if not row:
-            raise HTTPException(409, 'Only a pending order can be rejected.')
+            raise HTTPException(409, 'Only a pending order can be cancelled.')
         contact = customer_contact(con, row[1])
         con.execute("UPDATE license_orders SET status='rejected', decided_at=?, decided_by=?, note=? WHERE id=? AND status='pending'",
                     (now, actor, (data.reason or '').strip() or None, order_id))
         con.execute("UPDATE activation_codes SET status='rejected', used_at=? WHERE code_hash=? AND status='pending'", (now, row[0]))
         audit(con, actor, 'license_order_rejected', f'license_order:{order_id}', {'reason': data.reason}, client_ip(request))
-    queue_customer_email(background_tasks, contact, 'rejected', {'reason': (data.reason or '').strip()}, ref=f'license_order:{order_id}')
-    return {'message': f'Order #{order_id} rejected. The customer can choose a plan again for a new code.'}
+    emailed = queue_customer_email(background_tasks, contact, 'rejected', {
+        'reason': (data.reason or '').strip(), 'code': row[2], 'plan': row[3], 'refund_amount': (data.refund_amount or '').strip(),
+        'refund_to': (data.refund_to or '').strip(), 'refund_by': (data.refund_by or '').strip()}, ref=f'license_order:{order_id}')
+    return {'emailed': emailed,
+            'message': f'Order #{order_id} cancelled.' + (' The customer was emailed.' if emailed else '') +
+                       ' They can choose a plan again in AVARA for a new code.'}
+
+
+@app.post('/api/owner/license-orders/{order_id}/hold')
+def owner_hold_order(order_id: int, data: OrderHold, request: Request, background_tasks: BackgroundTasks):
+    """Keep a pending order waiting and tell the customer why (it can still be approved later)."""
+    actor = owner_session(request)
+    with db() as con:
+        require_licensing(con)
+        row = con.execute('SELECT o.installation_id, c.hint, p.name FROM license_orders o '
+                          'JOIN activation_codes c ON c.code_hash=o.code_hash JOIN plans p ON p.id=o.plan_id '
+                          'WHERE o.id=? AND o.status=?', (order_id, 'pending')).fetchone()
+        if not row:
+            raise HTTPException(409, 'Only a waiting order can be put on hold.')
+        contact = customer_contact(con, row[0])
+        reason = data.reason.strip()
+        con.execute('UPDATE license_orders SET note=? WHERE id=?', ('On hold: ' + reason, order_id))
+        audit(con, actor, 'license_order_on_hold', f'license_order:{order_id}', {'reason': reason, 'need': data.need}, client_ip(request))
+    emailed = queue_customer_email(background_tasks, contact, 'on_hold',
+                                   {'reason': reason, 'need': (data.need or '').strip(), 'code': row[1], 'plan': row[2]},
+                                   ref=f'license_order:{order_id}')
+    return {'emailed': emailed, 'message': f'Order #{order_id} is on hold.' + (' The customer was emailed.' if emailed else
+                                                                              ' No customer email is linked to it.')}
 
 
 @app.get('/api/owner/entitlements')

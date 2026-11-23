@@ -578,6 +578,37 @@ class AppAccountAndEmailTests(StoreTestCase):
                      'AVARA · Your desktop. Your AI.'):
             self.assertIn(line, body)
 
+    def test_hold_and_cancel_send_the_owners_templates(self):
+        sent = []
+        with patch.object(server, 'email_transport', return_value='brevo'), \
+             patch.object(server, '_send_text_email', side_effect=lambda to, subject, body, transport: sent.append((to, subject, body))):
+            self.sign('create')
+            code = self.client.post('/api/v2/installations/register', json={'token': token(1), 'plan_id': 'pro'}).json()['code']['code']
+            csrf = self.login()
+            order_id = self.client.get('/api/owner/license-orders', params={'status': 'pending'}).json()['orders'][0]['id']
+            sent.clear()
+            held = self.owner_post(f'/api/owner/license-orders/{order_id}/hold',
+                                   {'reason': "I'm still checking your payment.", 'need': 'your UPI reference'}, csrf)
+            self.assertEqual(held.status_code, 200, held.text)
+            self.assertTrue(held.json()['emailed'])
+            # Still waiting, so it can be approved later.
+            self.assertEqual(self.client.get('/api/owner/license-orders', params={'status': 'pending'}).json()['orders'][0]['id'], order_id)
+            cancelled = self.owner_post(f'/api/owner/license-orders/{order_id}/reject',
+                                        {'reason': "payment wasn't received", 'refund_amount': '₹200', 'refund_to': 'your UPI ID',
+                                         'refund_by': '25 November'}, csrf)
+            self.assertEqual(cancelled.status_code, 200, cancelled.text)
+        hint = 'AVR-••••-' + code[-4:]
+        (_, hold_subject, hold_body), (_, cancel_subject, cancel_body) = [m for m in sent if m[0] == 'buyer@example.test']
+        self.assertEqual(hold_subject, f'Your AVARA order {hint} is on hold')
+        self.assertIn("Thanks for your order! I've put it on hold for now because I'm still checking your payment.\n", hold_body)
+        self.assertIn('What I need from you: your UPI reference.', hold_body)
+        self.assertIn('your code expires 48 hours after it was created', hold_body)
+        self.assertIn('Thanks for your patience,', hold_body)
+        self.assertEqual(cancel_subject, f'Your AVARA order {hint} has been cancelled')
+        self.assertIn(f"Your AVARA order {hint} for the Pro plan has been cancelled because payment wasn't received.", cancel_body)
+        self.assertIn('Your payment of ₹200 will be refunded to your UPI ID by 25 November.', cancel_body)
+        self.assertIn("If you think this was a mistake, reply to this email and I'll help.", cancel_body)
+
     def test_brevo_sends_from_a_verified_gmail_without_a_domain(self):
         captured = {}
 
