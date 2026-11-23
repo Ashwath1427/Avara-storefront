@@ -1552,12 +1552,15 @@ def _date(seconds) -> str:
     return time.strftime('%d %B %Y', time.gmtime(int(seconds)))
 
 
+OWNER_CONTACT_EMAIL = os.environ.get('AVARA_OWNER_EMAIL', 'kasula.ashwath3180076@gmail.com')
+
+
 def customer_email_body(kind: str, name: str, details: dict) -> str:
     plan, price = details.get('plan', 'AVARA'), details.get('price_inr')
     lines = {
         'order_received': [f'Thank you for choosing AVARA {plan}' + (f' (₹{price:,})' if price else '') + '.',
                            f"Your one-time code is {details.get('code')}." if details.get('code') else '',
-                           'Send this code to the AVARA owner on WhatsApp together with your cash or UPI payment.',
+                           f'Email this code to the AVARA owner at {OWNER_CONTACT_EMAIL} together with your cash or UPI payment.',
                            f"The code is valid until {_date(details['code_expires'])} (UTC)." if details.get('code_expires') else '',
                            'AVARA unlocks automatically as soon as the owner approves.'],
         'approved': [f'Your payment was approved. AVARA {plan} is active until {_date(details.get('expires') or 0)} (UTC).',
@@ -1951,6 +1954,9 @@ def owner_license_orders(request: Request, response: Response, status: str = 'al
     clauses, params = [], []
     filters = {
         'pending': ("o.status='pending' AND c.expires_at>?", (now,)),
+        # Default owner view: everything still waiting plus anything decided in the last 24 hours,
+        # so an order you just approved stays on screen with its new status.
+        'recent': ("((o.status='pending' AND c.expires_at>?) OR o.decided_at>=?)", (now, now - 86400)),
         'expired': ("o.status='pending' AND c.expires_at<=?", (now,)),
         'approved': ("o.status='approved'", ()), 'rejected': ("o.status='rejected'", ()),
         'superseded': ("o.status='superseded'", ()), 'all': ('1=1', ()),
@@ -2150,6 +2156,7 @@ def owner_change_entitlement(entitlement_id: int, data: EntitlementChange, reque
 class OwnerEmail(BaseModel):
     installation_id: str | None = Field(default=None, pattern=r'^ins_[0-9a-f]{24}$')
     email: str | None = Field(default=None, max_length=254)
+    name: str | None = Field(default=None, max_length=120)
     subject: str = Field(min_length=1, max_length=150)
     message: str = Field(min_length=1, max_length=5000)
 
@@ -2163,15 +2170,20 @@ def owner_email_customer(data: OwnerEmail, request: Request, background_tasks: B
         if data.installation_id:
             contact = customer_contact(con, data.installation_id)
         elif data.email:
-            row = con.execute('SELECT id, name, email FROM users WHERE lower(email)=?', (data.email.strip().lower(),)).fetchone()
-            contact = tuple(row) if row else None
+            address = data.email.strip()
+            if not re.fullmatch(r'[^@\s<>,;]+@[^@\s<>,;]+\.[A-Za-z]{2,}', address):
+                raise HTTPException(400, 'Enter a valid email address.')
+            row = con.execute('SELECT id, name, email FROM users WHERE lower(email)=?', (address.lower(),)).fetchone()
+            # Anyone can be emailed: an account supplies the name, otherwise the name you typed (or none).
+            contact = tuple(row) if row else (None, (data.name or '').strip(), address)
         else:
-            raise HTTPException(400, 'Choose a customer.')
+            raise HTTPException(400, 'Enter an email address.')
         if not contact:
-            raise HTTPException(404, 'This customer has no AVARA account email.')
-        audit(con, actor, 'customer_emailed', data.installation_id or f'user:{contact[0]}', {'subject': data.subject[:120]},
-              client_ip(request))
-    body = f'Hello {contact[1]},\n\n{data.message.strip()}\n\nAVARA'
+            raise HTTPException(404, 'This customer has no AVARA account email. Type their email address instead.')
+        audit(con, actor, 'customer_emailed', data.installation_id or (f'user:{contact[0]}' if contact[0] else 'email:' + contact[2]),
+              {'subject': data.subject[:120]}, client_ip(request))
+    greeting = f'Hello {contact[1]},' if contact[1] else 'Hello,'
+    body = f'{greeting}\n\n{data.message.strip()}\n\nAVARA'
     queue_customer_email(background_tasks, contact, 'owner_message', subject=data.subject.strip(), body=body,
                          ref=data.installation_id)
     return {'message': f'Email to {contact[2]} is being sent.' if email_transport() else

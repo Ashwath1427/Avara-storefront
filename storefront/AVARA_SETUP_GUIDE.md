@@ -5,7 +5,7 @@
 1. Download AVARA from the website's Download section. There is one installer per system, the same for every plan. No account or order is needed to download.
 2. Windows: run `AVARA-…-windows-setup.exe`. Mac (Apple Silicon, macOS 14 or later): open the DMG and drag AVARA to Applications.
 3. Open AVARA and choose your plan. AVARA shows a one-time code such as `AVR-7F3K-92QD`.
-4. Send the code to the AVARA owner on WhatsApp and pay by cash or UPI. Keep AVARA open and online; it unlocks itself after approval and shows your plan and expiry.
+4. Email the code to the AVARA owner at kasula.ashwath3180076@gmail.com and pay by cash or UPI. Keep AVARA open and online; it unlocks itself after approval and shows your plan and expiry.
 5. The code works once, only on this computer, and expires after 48 hours unapproved. Changing the plan before approval gives a new code.
 
 ## Choose one AI option

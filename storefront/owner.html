@@ -79,7 +79,7 @@
 
     <section class="panel" data-panel="codes">
       <h2>Approve a payment</h2>
-      <p class="meta">Paste the code the customer sent on WhatsApp after you receive their payment.</p>
+      <p class="meta">Paste the code the customer emailed you after you receive their payment.</p>
       <form class="row" id="approve-form">
         <input class="grow" id="approve-code" autocomplete="off" spellcheck="false" maxlength="40" placeholder="AVR-XXXX-XXXX" required>
         <input class="grow" id="approve-ref" autocomplete="off" maxlength="120" placeholder="Payment note (optional, e.g. UPI ref)">
@@ -87,7 +87,7 @@
       </form>
       <div class="row" style="margin-top:16px">
         <input class="grow" id="code-search" placeholder="Search by code, customer email, order # or installation id" maxlength="254">
-        <select id="code-status" aria-label="Status"><option value="pending">Waiting for approval</option><option value="all">All</option><option value="approved">Approved</option><option value="expired">Expired</option><option value="rejected">Rejected</option><option value="superseded">Replaced</option></select>
+        <select id="code-status" aria-label="Status"><option value="recent">Waiting + decided today</option><option value="pending">Waiting for approval</option><option value="all">All</option><option value="approved">Approved</option><option value="expired">Expired</option><option value="rejected">Rejected</option><option value="superseded">Replaced</option></select>
         <button class="btn secondary" id="code-refresh" type="button">Refresh</button>
       </div>
       <div class="counts meta" id="code-counts" style="margin-top:10px"></div>
@@ -109,7 +109,7 @@
     <section class="panel" data-panel="reviews" hidden><div class="list" id="review-list"></div></section>
 
     <section class="panel" data-panel="emails" hidden>
-      <div class="row" style="justify-content:space-between"><p class="meta" id="email-config"></p><button class="btn secondary" id="emails-refresh" type="button">Refresh</button></div>
+      <div class="row" style="justify-content:space-between"><p class="meta" id="email-config"></p><div class="row"><button class="btn" id="email-new" type="button">Write an email</button><button class="btn secondary" id="emails-refresh" type="button">Refresh</button></div></div>
       <div class="scroll"><table><thead><tr><th>Time</th><th>To</th><th>Type</th><th>Subject</th><th>Status</th></tr></thead><tbody id="email-body"></tbody></table></div>
     </section>
 
@@ -121,7 +121,8 @@
   <dialog id="email-dialog" aria-labelledby="email-dialog-title">
     <form method="dialog" id="email-form">
       <h2 id="email-dialog-title">Email customer</h2>
-      <p class="meta" id="email-to"></p>
+      <label>To<input id="email-address" type="email" maxlength="254" required placeholder="name@example.com" autocomplete="off"></label>
+      <label>Name (optional)<input id="email-name" maxlength="120" autocomplete="off" placeholder="Used in the greeting"></label>
       <label>Subject<input id="email-subject" maxlength="150" required></label>
       <label>Message<textarea id="email-message" maxlength="5000" required></textarea></label>
       <div class="row"><button class="btn" id="email-send" value="send" type="submit">Send email</button><button class="btn secondary" value="cancel" type="button" id="email-cancel">Cancel</button></div>
@@ -198,11 +199,11 @@ function renderCode(order, now) {
   info.append(title, who, code, timing, device);
   if (order.entitlement_state) info.append(el('div', 'meta', 'Current plan on this computer: ' + order.entitlement_plan_id + ' · ' + order.entitlement_state + ' until ' + when(order.entitlement_expires)));
   const actions = el('div', 'actions');
-  if (order.customer_email) actions.append(button('Email', 'secondary', () => openEmail({installation_id: order.installation_id}, order.customer_name, order.customer_email, 'Your AVARA order #' + order.id)));
+  actions.append(button('Email', 'secondary', () => openEmail(order.customer_email ? {installation_id: order.installation_id} : null, order.customer_name, order.customer_email, 'Your AVARA order #' + order.id)));
   if (order.status === 'pending') {
     actions.append(button('Approve', '', async () => {
       if (!confirm('Approve order #' + order.id + ' (' + order.plan_name + ', ' + inr(order.price_inr) + ')? Only approve after you have received the payment.')) return;
-      const result = await api('/api/owner/license-orders/approve', 'POST', {order_id: order.id}); notice(result.message); loadCodes(true);
+      const result = await api('/api/owner/license-orders/approve', 'POST', {order_id: order.id}); notice(result.message + (result.emailed ? ' The customer was emailed.' : '')); loadCodes(true);
     }));
     actions.append(button('Reject', 'danger', async () => {
       const reason = prompt('Reject order #' + order.id + '? Optional reason:'); if (reason === null) return;
@@ -221,7 +222,9 @@ $('approve-form').onsubmit = async event => {
     if (order.status !== 'pending') throw new Error('This code is ' + order.status + ' and cannot be approved.');
     if (!confirm('Approve ' + order.plan_name + ' for ' + inr(order.price_inr) + ' (order #' + order.id + ')? Only approve after receiving payment.')) return;
     const result = await api('/api/owner/license-orders/approve', 'POST', {code, payment_reference: $('approve-ref').value.trim() || null});
-    $('approve-code').value = ''; $('approve-ref').value = ''; notice(result.message); loadCodes(true);
+    $('approve-code').value = ''; $('approve-ref').value = ''; notice(result.message + (result.emailed ? ' The customer was emailed.' : ''));
+    if ($('code-status').value === 'pending') $('code-status').value = 'recent';
+    loadCodes(true);
   } catch (error) { notice(error.message); }
 };
 $('code-refresh').onclick = () => loadCodes();
@@ -246,7 +249,7 @@ function renderInstall(item) {
     el('div', 'meta', (item.legacy ? 'From website order #' + item.legacy_order_id : 'From app order #' + item.source_order_id) + (item.customer_name ? ' · ' + item.customer_name + ' · ' + item.customer_email : '')));
   const actions = el('div', 'actions');
   if (item.customer_email && item.installation_id) actions.append(button('Email', 'secondary', () => openEmail({installation_id: item.installation_id}, item.customer_name, item.customer_email, 'About your AVARA plan')));
-  else if (item.customer_email) actions.append(button('Email', 'secondary', () => openEmail({email: item.customer_email}, item.customer_name, item.customer_email, 'About your AVARA plan')));
+  else actions.append(button('Email', 'secondary', () => openEmail(null, item.customer_name, item.customer_email, 'About your AVARA plan')));
   const change = async (action, extra, question) => { if (question && !confirm(question)) return; notice((await api('/api/owner/entitlements/' + item.id, 'POST', {action, ...extra})).message); loadInstalls(); };
   if (item.state === 'cancelled') {
     // Cancellation is final: only a new code from the customer, approved by you, starts a new plan.
@@ -333,22 +336,29 @@ $('audit-refresh').onclick = loadAudit;
 
 // ---------------------------------------------------------------- customer emails
 let emailTarget = null;
+// target {installation_id} sends to the account linked to that computer; otherwise the typed address is used.
 function openEmail(target, name, email, subject) {
   emailTarget = target;
-  $('email-to').textContent = 'To ' + (name ? name + ' · ' : '') + email;
-  $('email-subject').value = subject;
+  $('email-address').value = email || '';
+  $('email-address').readOnly = Boolean(target);
+  $('email-name').value = name || '';
+  $('email-name').closest('label').hidden = Boolean(target);
+  $('email-subject').value = subject || '';
   $('email-message').value = '';
   $('email-dialog').showModal();
-  $('email-message').focus();
+  (email ? $('email-message') : $('email-address')).focus();
 }
+$('email-new').onclick = () => openEmail(null, '', '', 'A message from AVARA');
 $('email-cancel').onclick = () => $('email-dialog').close();
 $('email-form').addEventListener('submit', async event => {
   event.preventDefault();
   $('email-send').disabled = true;
   try {
-    const result = await api('/api/owner/email', 'POST', {...emailTarget, subject: $('email-subject').value, message: $('email-message').value});
+    const target = emailTarget || {email: $('email-address').value.trim(), name: $('email-name').value.trim() || null};
+    const result = await api('/api/owner/email', 'POST', {...target, subject: $('email-subject').value, message: $('email-message').value});
     $('email-dialog').close();
     notice(result.message);
+    if (activeTab === 'emails') loadEmails();
   } catch (error) { notice(error.message); $('email-dialog').close(); }
   finally { $('email-send').disabled = false; }
 });
