@@ -1,33 +1,33 @@
 {
   "enabled": true,
-  "version": "1.2.0",
+  "version": "1.2.1",
   "platforms": {
     "windows": {
       "enabled": false,
-      "version": "1.2.0",
-      "filename": "AVARA-1.2.0-windows-setup.exe",
-      "size": 131056233,
-      "sha256": "39eb9bcb56ec337b5751440e494d405ebf2fbbfec263929d5770d5cb44e74250",
+      "version": "1.2.1",
+      "filename": "AVARA-1.2.1-windows-setup.exe",
+      "size": 130910744,
+      "sha256": "6f6dbddc32b7886b3d46f346fd649d067333dc58447f5e0a919d11c8ce4b70a0",
       "parts": [
         {
-          "name": "AVARA-1.2.0-windows-setup.exe.part01",
+          "name": "AVARA-1.2.1-windows-setup.exe.part01",
           "size": 41943040,
-          "sha256": "96cb01aa42f4dfee37a1e1e06cec032968b72de2214f74c41ebe6cf95fa8eed0"
+          "sha256": "a92aaaa37ca6cc1413c0835b02cc27ccfe93fbf463d404e95357cee0841e10cb"
         },
         {
-          "name": "AVARA-1.2.0-windows-setup.exe.part02",
+          "name": "AVARA-1.2.1-windows-setup.exe.part02",
           "size": 41943040,
-          "sha256": "ed700d31d1c0479d8eaa463d6ccd369bec1a1c9f532106bee011ef5feb411547"
+          "sha256": "7c8958815a393eb7d6ab8636400fa8051b53b94481d5f809eca13a8e241efb8e"
         },
         {
-          "name": "AVARA-1.2.0-windows-setup.exe.part03",
+          "name": "AVARA-1.2.1-windows-setup.exe.part03",
           "size": 41943040,
-          "sha256": "8461ee19d95d1ee21bdd4be9127c6a6729b8de50f431ddcf1ebd6c947e2132b2"
+          "sha256": "8963208c9bf9a6da3a81d14480ab87f584fb85a500f756e231d15348881ef6d9"
         },
         {
-          "name": "AVARA-1.2.0-windows-setup.exe.part04",
-          "size": 5227113,
-          "sha256": "b20270ad118bd09b708fcdbb82ae86fd1db9c63495ea477742a91f69488d9fc0"
+          "name": "AVARA-1.2.1-windows-setup.exe.part04",
+          "size": 5081624,
+          "sha256": "2727c9e178610ff3c368eb72ba745935cf1118e973e4433328b4c93da44026e7"
         }
       ],
       "requirement": "Windows 10 or 11 (64-bit)",
