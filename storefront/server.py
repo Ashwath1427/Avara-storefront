@@ -1914,14 +1914,25 @@ def register_installation(data: InstallationRegistration, request: Request, resp
         payload, code_info = installation_status(con, inst_id, data.token, now)
         account = installation_account(con, inst_id)
     if new_order:
-        who = f'{contact[1]} <{contact[2]}>' if contact else 'a customer (no account email)'
+        with db() as con:
+            device = con.execute('SELECT platform, app_version FROM app_installations WHERE id=?', (inst_id,)).fetchone()
+        placed = time.strftime('%d %b %Y, %I:%M %p', time.gmtime(now + 19800)) + ' (India time)'
+        hint = code_info and code_info.get('code')
+        details = (f"New order #{new_order} placed in the AVARA app.\n\n"
+                   f"Customer name:  {contact[1] if contact else '(not signed in)'}\n"
+                   f"Customer email: {contact[2] if contact else '(none)'}\n"
+                   f"Plan:           {plan['name']} (₹{plan['price_inr']:,}, {plan['term_days']} days)\n"
+                   f"Placed at:      {placed}\n"
+                   f"Computer:       {(device[0] if device else 'unknown').title()}"
+                   f"{(', AVARA ' + device[1]) if device and device[1] else ''}\n"
+                   f"Order code:     {hint or '(shown in the customer app)'}\n\n"
+                   "When you have the payment and the customer's code, approve it on the owner page: "
+                   f"{os.getenv('AVARA_STORE_PUBLIC_URL', '').strip().rstrip('/') or str(request.base_url).rstrip('/')}/owner\n\nAVARA")
         for owner in OWNER_EMAILS:
             queue_customer_email(background_tasks, (None, 'AVARA owner', owner), 'owner_new_order',
-                                 subject=f"New AVARA order #{new_order}: {plan['name']} · ₹{plan['price_inr']:,}",
-                                 body=(f"New order #{new_order} placed in the AVARA app.\n\nPlan: {plan['name']} (₹{plan['price_inr']:,})\n"
-                                       f"Customer: {who}\nComputer: {inst_id}\n\nWhen you receive the payment and the customer's code, "
-                                       "approve it on the owner page: https://avara-storefront.onrender.com/owner\n\nAVARA"),
-                                 ref=f'license_order:{new_order}')
+                                 subject=f"New AVARA order #{new_order}: {plan['name']} · ₹{plan['price_inr']:,} · "
+                                         f"{contact[1] if contact else 'customer'}",
+                                 body=details, ref=f'license_order:{new_order}')
         queue_customer_email(background_tasks, contact, 'order_received',
                              {'plan': plan['name'], 'price_inr': plan['price_inr'], 'code': code_info and code_info.get('code'),
                               'code_expires': code_info and code_info.get('expires_at')}, ref=f'license_order:{new_order}')

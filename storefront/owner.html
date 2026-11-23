@@ -160,7 +160,13 @@ $('login-form').onsubmit = async event => {
   try {
     const result = await fetch('/api/owner/login', {method: 'POST', credentials: 'same-origin', headers: {'Content-Type': 'application/json'}, body: JSON.stringify({key: $('owner-key').value.trim()})});
     const data = await result.json().catch(() => ({}));
-    if (!result.ok) throw new Error(typeof data.detail === 'string' ? data.detail : 'Sign-in failed.');
+    if (!result.ok) {
+      let message = typeof data.detail === 'string' ? data.detail : 'Sign-in failed.';
+      // The local test store (used by "AVARA Test") has its own key; the real website key never works here.
+      if (result.status === 401 && ['127.0.0.1', 'localhost'].includes(location.hostname))
+        message += ' This is the LOCAL TEST store: use the test key e2e-owner-key-0123456789abcdefghij (shown in the "AVARA Test Server" window), not your real website key.';
+      throw new Error(message);
+    }
     $('owner-key').value = ''; notice('');
     await showDashboard(await api('/api/owner/session'));
   } catch (error) { notice(error.message); }
