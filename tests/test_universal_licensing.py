@@ -624,6 +624,23 @@ class AppAccountAndEmailTests(StoreTestCase):
         self.assertEqual(orders[1]['price_inr'], 1400)
         self.assertEqual(self.client.get('/api/owner/license-orders', params={'status': 'approved'}).json()['orders'][0]['id'], 10)
 
+    def test_owner_can_delete_finished_orders_but_not_running_ones(self):
+        self.sign('create')
+        self.client.post('/api/v2/installations/register', json={'token': token(1), 'plan_id': 'basic'})
+        code = self.client.post('/api/v2/installations/register', json={'token': token(1), 'plan_id': 'pro'}).json()['code']['code']
+        csrf = self.login()
+        listed = {o['id']: o for o in self.client.get('/api/owner/license-orders', params={'status': 'all'}).json()['orders']}
+        replaced, waiting = sorted(listed)
+        self.assertEqual((listed[replaced]['status'], listed[replaced]['deletable']), ('superseded', True))
+        self.assertFalse(listed[waiting]['deletable'])
+        self.assertEqual(self.owner_post(f'/api/owner/orders/app/{waiting}/delete', {}, csrf).status_code, 409)
+        self.assertEqual(self.owner_post('/api/owner/license-orders/approve', {'code': code}, csrf).status_code, 200)
+        self.assertEqual(self.owner_post(f'/api/owner/orders/app/{waiting}/delete', {}, csrf).status_code, 409)  # plan running
+        self.assertEqual(self.owner_post(f'/api/owner/orders/app/{replaced}/delete', {}, csrf).status_code, 200)
+        remaining = [o['id'] for o in self.client.get('/api/owner/license-orders', params={'status': 'all'}).json()['orders']]
+        self.assertEqual(remaining, [waiting])
+        self.assertIn('order_deleted', self.audit_actions())
+
     def test_brevo_sends_from_a_verified_gmail_without_a_domain(self):
         captured = {}
 

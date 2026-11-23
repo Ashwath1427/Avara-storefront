@@ -228,6 +228,10 @@ function renderCode(order, now) {
     actions.append(button('Put on hold', 'secondary', async () => openDecision('hold', order)));
     actions.append(button('Cancel order', 'danger', async () => openDecision('cancel', order)));
   }
+  if (order.deletable) actions.append(button('Delete', 'danger', async () => {
+    if (!confirm('Delete order #' + order.id + (web ? ' (website)' : '') + ' for good? It disappears from this list and from Supabase. This cannot be undone.')) return;
+    notice((await api('/api/owner/orders/' + (web ? 'website' : 'app') + '/' + order.id + '/delete', 'POST')).message); loadCodes(true);
+  }));
   card.append(info, actions); return card;
 }
 $('approve-form').onsubmit = async event => {

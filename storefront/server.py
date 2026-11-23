@@ -2148,7 +2148,59 @@ def owner_license_orders(request: Request, response: Response, status: str = 'al
     for item in website:
         counts[item['status']] = counts.get(item['status'], 0) + 1
     orders = sorted(orders + website, key=lambda item: item['created'] or 0, reverse=True)
+    for item in orders:
+        item.setdefault('source', 'app')
+        item['deletable'] = _deletable(item)
     return {'orders': orders, 'counts': counts, 'server_time': now}
+
+
+def _deletable(item) -> bool:
+    """Finished orders the owner may remove: replaced, cancelled, expired, or approved with a plan no longer running."""
+    if item['status'] in ('superseded', 'rejected', 'expired', 'deleted'):
+        return True
+    return item['status'] == 'approved' and item.get('entitlement_state') in (None, 'cancelled', 'expired')
+
+
+@app.post('/api/owner/orders/{source}/{order_id}/delete')
+def owner_delete_order(source: str, order_id: int, request: Request):
+    """Permanently remove a finished order (app or website). Orders behind a running plan cannot be deleted."""
+    actor = owner_session(request)
+    now = int(time.time())
+    with db() as con:
+        require_licensing(con)
+        if source == 'app':
+            row = con.execute('SELECT o.status, o.code_hash, c.expires_at FROM license_orders o '
+                              'JOIN activation_codes c ON c.code_hash=o.code_hash WHERE o.id=?', (order_id,)).fetchone()
+            if not row:
+                raise HTTPException(404, 'Order not found.')
+            status = 'expired' if row[0] == 'pending' and row[2] <= now else row[0]
+            running = con.execute("SELECT 1 FROM entitlements WHERE source_order_id=? AND state IN ('active','paused')",
+                                  (order_id,)).fetchone()
+            if status == 'pending':
+                raise HTTPException(409, 'This order is still waiting. Approve it, or use Cancel order first.')
+            if running:
+                raise HTTPException(409, 'This order is behind a running plan. Cancel the plan under Installations first.')
+            con.execute('UPDATE entitlements SET source_order_id=NULL WHERE source_order_id=?', (order_id,))
+            con.execute('DELETE FROM license_orders WHERE id=?', (order_id,))
+            con.execute('DELETE FROM activation_codes WHERE code_hash=? AND NOT EXISTS '
+                        '(SELECT 1 FROM license_orders WHERE code_hash=?)', (row[1], row[1]))
+        elif source == 'website':
+            if not con.execute('SELECT 1 FROM orders WHERE id=?', (order_id,)).fetchone():
+                raise HTTPException(404, 'Order not found.')
+            if con.execute("SELECT 1 FROM entitlements WHERE legacy_order_id=? AND state IN ('active','paused')",
+                           (order_id,)).fetchone():
+                raise HTTPException(409, 'This order is behind a running plan. Cancel the plan under Installations first.')
+            con.execute('DELETE FROM entitlements WHERE legacy_order_id=? AND state NOT IN (?,?)', (order_id, 'active', 'paused'))
+            for table in ('installations', 'order_email', 'order_recoveries'):
+                try:
+                    con.execute(f'DELETE FROM {table} WHERE order_id=?', (order_id,))
+                except sqlite3.Error:
+                    pass
+            con.execute('DELETE FROM orders WHERE id=?', (order_id,))
+        else:
+            raise HTTPException(404)
+        audit(con, actor, 'order_deleted', f'{source}_order:{order_id}', {}, client_ip(request))
+    return {'message': f'Order #{order_id} deleted.'}
 
 
 def _website_order_rows(con, status: str, q: str, now: int):
