@@ -1719,10 +1719,44 @@ class InstallationAccount(BaseModel):
     name: str | None = Field(default=None, max_length=100)
     platform: str = Field(default='unknown', pattern=r'^(windows|mac|linux|unknown)$')
     app_version: str = Field(default='', max_length=40, pattern=r'^[0-9A-Za-z.+_-]*$')
+    allow_similar: bool = False  # set after the customer confirms a look-alike email really is theirs
 
 
 def _hash_password(password: str, salt: bytes) -> bytes:
     return hashlib.scrypt(password.encode(), salt=salt, n=16384, r=8, p=1)
+
+
+def _edit_distance(a: str, b: str, cap: int = 3) -> int:
+    """Levenshtein distance, stopping early once it exceeds cap."""
+    if abs(len(a) - len(b)) > cap:
+        return cap + 1
+    previous = list(range(len(b) + 1))
+    for i, ca in enumerate(a, 1):
+        current = [i]
+        for j, cb in enumerate(b, 1):
+            current.append(min(previous[j] + 1, current[j - 1] + 1, previous[j - 1] + (ca != cb)))
+        if min(current) > cap:
+            return cap + 1
+        previous = current
+    return previous[-1]
+
+
+def _similar_account_email(con, email: str) -> str | None:
+    """An existing account email one or two typos away (same domain), e.g. santosh vs santhosh."""
+    local, _, domain = email.partition('@')
+    best = None
+    for (other,) in con.execute('SELECT email FROM users WHERE email LIKE ?', ('%@' + domain,)).fetchall():
+        other_local = other.partition('@')[0]
+        if other != email and _edit_distance(local, other_local, 2) <= 2:
+            best = other
+            break
+    return best
+
+
+def _mask_email(email: str) -> str:
+    local, _, domain = email.partition('@')
+    keep = max(1, len(local) // 3)
+    return local[:1] + '•' * max(1, len(local) - keep - 1) + local[-keep:] + '@' + domain
 
 
 @app.post('/api/v2/account/{mode}')
@@ -1747,6 +1781,12 @@ def installation_sign_in(mode: str, data: InstallationAccount, request: Request,
             name = (data.name or '').strip()
             if not name:
                 raise HTTPException(400, 'Enter your name.')
+            similar = _similar_account_email(con, email) if not data.allow_similar else None
+            if similar and not con.execute('SELECT 1 FROM users WHERE email=?', (email,)).fetchone():
+                # A one-letter typo silently created a second account before; stop and ask.
+                raise HTTPException(409, f'An account already exists for a very similar email ({_mask_email(similar)}). '
+                                         'Check the spelling and choose Sign in. If this really is a different email, '
+                                         'choose Create account again to confirm.')
             salt = secrets.token_bytes(16)
             inserted = con.execute('INSERT INTO users(name,email,salt,password) VALUES(?,?,?,?) ON CONFLICT(email) DO NOTHING',
                                    (name, email, salt, _hash_password(data.password, salt)))
@@ -1766,9 +1806,16 @@ def installation_sign_in(mode: str, data: InstallationAccount, request: Request,
             audit(con, f'user:{row[0]}', 'app_account_created' if created_name else 'app_signed_in', inst_id, None, ip)
             payload, code_info = installation_status(con, inst_id, data.token, now)
             account = installation_account(con, inst_id)
+    similar = None
+    if failed and not row:
+        with db() as con:
+            similar = _similar_account_email(con, email)
     if failed:  # Logged after the transaction closes so SQLite is not waiting on itself.
         record('anonymous', 'app_sign_in_failed', inst_id, {'reason': 'no_account' if not row else 'wrong_password'}, ip)
         # Say which one it is: customers were stuck typing an email that had no account. Rate limits above still apply.
+        if not row and similar:
+            raise HTTPException(404, f'There is no AVARA account for {email}, but there is one for {_mask_email(similar)}. '
+                                     'Check the spelling of your email and sign in again.')
         raise HTTPException(404 if not row else 401, 'There is no AVARA account for this email yet. Choose Create account to make one (or check the email for typos).' if not row else 'The password is incorrect for this account. Try again, or ask the AVARA owner to help you reset it.')
     if created_name:
         background_tasks.add_task(_sync_supabase_account, email, created_name)
