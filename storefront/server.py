@@ -865,8 +865,10 @@ def login(data: Credentials, background_tasks: BackgroundTasks):
         row = con.execute('SELECT id,salt,password,name FROM users WHERE email=?', (data.email.strip().lower(),)).fetchone()
         salt = row[1] if row else bytes(16)
         value = hashlib.scrypt(data.password.encode(), salt=salt, n=16384, r=8, p=1)
-        if not row or not hmac.compare_digest(value, row[2]):
-            raise HTTPException(401, 'Email or password is incorrect.')
+        if not row:
+            raise HTTPException(404, 'There is no AVARA account for this email yet. Choose Create account to make one (or check the email for typos).')
+        if not hmac.compare_digest(value, row[2]):
+            raise HTTPException(401, 'The password is incorrect for this account. Try again, or ask the AVARA owner to help you reset it.')
         token = secrets.token_urlsafe(32)
         con.execute('INSERT INTO sessions VALUES(?,?,?)', (hashlib.sha256(token.encode()).hexdigest(), row[0], int(time.time())+SESSION_SECONDS))
     from fastapi.responses import JSONResponse
@@ -1765,8 +1767,9 @@ def installation_sign_in(mode: str, data: InstallationAccount, request: Request,
             payload, code_info = installation_status(con, inst_id, data.token, now)
             account = installation_account(con, inst_id)
     if failed:  # Logged after the transaction closes so SQLite is not waiting on itself.
-        record('anonymous', 'app_sign_in_failed', inst_id, None, ip)
-        raise HTTPException(401, 'Email or password is incorrect.')
+        record('anonymous', 'app_sign_in_failed', inst_id, {'reason': 'no_account' if not row else 'wrong_password'}, ip)
+        # Say which one it is: customers were stuck typing an email that had no account. Rate limits above still apply.
+        raise HTTPException(404 if not row else 401, 'There is no AVARA account for this email yet. Choose Create account to make one (or check the email for typos).' if not row else 'The password is incorrect for this account. Try again, or ask the AVARA owner to help you reset it.')
     if created_name:
         background_tasks.add_task(_sync_supabase_account, email, created_name)
     return signed_status(payload, code_info, account)
