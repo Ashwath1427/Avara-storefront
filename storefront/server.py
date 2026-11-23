@@ -1543,7 +1543,7 @@ def signed_status(payload, code, account=None):
 
 EMAIL_SUBJECTS = {
     'order_received': 'Your AVARA order: {plan}',
-    'approved': 'AVARA {plan} is active',
+    'approved': 'Your AVARA {plan} is approved ✅',
     'rejected': 'Your AVARA order was not approved',
     'paused': 'Your AVARA plan is paused',
     'resumed': 'Your AVARA plan is active again',
@@ -1570,16 +1570,25 @@ OWNER_EMAILS = [item.strip().lower() for item in os.environ.get('AVARA_OWNER_EMA
                 if re.fullmatch(r'[^@\s,;<>]+@[^@\s,;<>]+\.[A-Za-z]{2,}', item.strip())] or [OWNER_CONTACT_EMAIL]
 
 
+OWNER_SIGNATURE = os.getenv('AVARA_OWNER_SIGNATURE', 'Ashwath').strip() or 'Ashwath'
+
+
 def customer_email_body(kind: str, name: str, details: dict) -> str:
     plan, price = details.get('plan', 'AVARA'), details.get('price_inr')
+    if kind == 'approved':  # the owner's own approval template
+        until = time.strftime('%d %B %Y', time.gmtime(int(details.get('expires') or 0) + 19800))
+        return (f"Hi {name},\n\n"
+                f"Thanks for your payment! Your order {details.get('code') or ''} is now approved.\n\n"
+                "Keep AVARA open and online, and it will unlock in a few seconds.\n\n"
+                f"Plan: {plan}\nActive until: {until}\n\n"
+                "If it doesn't unlock, just reply to this email and I'll sort it out.\n\n"
+                f"Welcome to AVARA!\n{OWNER_SIGNATURE}\nAVARA · Your desktop. Your AI.")
     lines = {
         'order_received': [f'Thank you for choosing AVARA {plan}' + (f' (₹{price:,})' if price else '') + '.',
                            f"Your one-time code is {details.get('code')}." if details.get('code') else '',
                            f'Email this code to the AVARA owner at {OWNER_CONTACT_EMAIL} together with your cash or UPI payment.',
                            f"The code is valid until {_date(details['code_expires'])} (UTC)." if details.get('code_expires') else '',
                            'AVARA unlocks automatically as soon as the owner approves.'],
-        'approved': [f'Your payment was approved. AVARA {plan} is active until {_date(details.get('expires') or 0)} (UTC).',
-                     'If AVARA is open, it unlocks within a few seconds.'],
         'rejected': ['The AVARA owner did not approve your order.' + (f" Note: {details['reason']}" if details.get('reason') else ''),
                      'You can choose a plan again in AVARA to get a new code.'],
         'paused': ['Your AVARA plan was paused by the owner. AVARA is locked until it is resumed.',
@@ -2127,6 +2136,9 @@ def owner_approve_code(data: CodeApprovalRequest, request: Request, background_t
         else:
             try:
                 granted = grant_license_order(con, row[0], actor, 'manual', (data.payment_reference or '').strip() or None)
+                hint = con.execute('SELECT c.hint FROM license_orders o JOIN activation_codes c ON c.code_hash=o.code_hash '
+                                   'WHERE o.id=?', (row[0],)).fetchone()
+                order_code = canonical if data.code else (hint[0] if hint else f'#{row[0]}')
                 audit(con, actor, 'license_order_approved', f'license_order:{row[0]}', granted, ip)
                 contact = customer_contact(con, granted['installation_id'])
                 error = None
@@ -2137,7 +2149,8 @@ def owner_approve_code(data: CodeApprovalRequest, request: Request, background_t
     if error:
         _owner_refusal(actor, 'approve_refused', target, error, ip)
     emailed = queue_customer_email(background_tasks, contact, 'approved',
-                                   {'plan': granted['plan_name'], 'expires': granted['expires']}, ref=f"license_order:{granted['order_id']}")
+                                   {'plan': granted['plan_name'], 'expires': granted['expires'], 'code': order_code},
+                                   ref=f"license_order:{granted['order_id']}")
     return {'emailed': emailed, 'message': f"Approved {granted['plan_name']} until {time.strftime('%d %b %Y', time.gmtime(granted['expires']))} (UTC). "
                        'The customer\'s AVARA unlocks within a few seconds.', **granted}
 

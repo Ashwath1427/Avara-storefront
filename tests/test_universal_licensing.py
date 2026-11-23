@@ -561,6 +561,23 @@ class AppAccountAndEmailTests(StoreTestCase):
         self.assertIn('password is incorrect', wrong.json()['detail'])
         self.assertEqual(self.sign('login', n=2).status_code, 200)  # the right password still signs in
 
+    def test_approving_sends_the_owners_approval_template(self):
+        sent = []
+        with patch.object(server, 'email_transport', return_value='brevo'), \
+             patch.object(server, '_send_text_email', side_effect=lambda to, subject, body, transport: sent.append((to, subject, body))):
+            self.sign('create')
+            code = self.client.post('/api/v2/installations/register', json={'token': token(1), 'plan_id': 'pro'}).json()['code']['code']
+            csrf = self.login()
+            sent.clear()
+            self.assertEqual(self.owner_post('/api/owner/license-orders/approve', {'code': code}, csrf).status_code, 200)
+        (to, subject, body), = [mail for mail in sent if mail[0] == 'buyer@example.test']
+        self.assertEqual(subject, 'Your AVARA Pro is approved ✅')
+        self.assertTrue(body.startswith('Hi Buyer,\n\nThanks for your payment! Your order ' + code + ' is now approved.'))
+        for line in ('Keep AVARA open and online, and it will unlock in a few seconds.', 'Plan: Pro', 'Active until: ',
+                     "If it doesn't unlock, just reply to this email and I'll sort it out.", 'Welcome to AVARA!',
+                     'AVARA · Your desktop. Your AI.'):
+            self.assertIn(line, body)
+
     def test_brevo_sends_from_a_verified_gmail_without_a_domain(self):
         captured = {}
 
@@ -662,7 +679,7 @@ class AppAccountAndEmailTests(StoreTestCase):
         self.assertEqual({to for to, _, _ in sent} - owners, {'buyer@example.test'})  # owners also get a new-order alert
         sent = [item for item in sent if item[0] not in owners]
         subjects = [subject for _, subject, _ in sent]
-        for expected in ('Your AVARA order: Pro', 'AVARA Pro is active', 'Your AVARA plan is paused', 'Your AVARA plan is active again',
+        for expected in ('Your AVARA order: Pro', 'Your AVARA Pro is approved ✅', 'Your AVARA plan is paused', 'Your AVARA plan is active again',
                          'Your AVARA plan was extended', 'Your AVARA plan changed to Basic', 'Your AVARA plan was cancelled', 'Hello from AVARA'):
             self.assertIn(expected, subjects)
         self.assertIn(code, sent[0][2])  # The order email repeats the one-time code.
