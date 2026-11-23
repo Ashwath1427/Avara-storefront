@@ -663,6 +663,9 @@ def plan_bundle_ready(plan: str, platform: str = 'windows'):
 
 
 def email_transport():
+    # Brevo first: it can send from a verified Gmail address to anyone, with no domain of your own.
+    if os.getenv('BREVO_API_KEY', '').strip():
+        return 'brevo'
     if os.getenv('RESEND_API_KEY', '').strip():
         return 'resend'
     if os.getenv('RENDER') != 'true' and os.getenv('AVARA_STORE_SMTP_USER') and os.getenv('AVARA_STORE_SMTP_PASSWORD'):
@@ -909,6 +912,10 @@ def _send_order_email(order_id, name, email, plan, addon, transport, platform='w
     msg['To'] = 'kasula.ashwath3180076@gmail.com'
     msg['Subject'] = f'AVARA cash order #{order_id}'
     msg.set_content(f'Order #{order_id}\nCustomer: {name}\nEmail: {email}\nPlan: {plan}\nOperating system: {platform.title()}\nAdd-on: {addon}\nPayment: cash\nTerms: draft-1 accepted')
+    if transport == 'brevo':
+        for owner in OWNER_EMAILS:
+            _send_text_email(owner, str(msg['Subject']), msg.get_content(), 'brevo')
+        return
     if transport == 'resend':
         payload = {'from': os.getenv('AVARA_STORE_EMAIL_FROM', 'AVARA Orders <onboarding@resend.dev>'),
                    'to': [str(msg['To'])], 'subject': str(msg['Subject']), 'text': msg.get_content()}
@@ -957,6 +964,9 @@ def _send_ready_email(order_id, name, email, plan, public_url, transport):
         'Some integrations require their own accounts and credentials. Never share your account password or API keys.\n\n'
         'AVARA Support'
     )
+    if transport == 'brevo':
+        _send_text_email(email, str(msg['Subject']), msg.get_content(), 'brevo')
+        return
     if transport == 'resend':
         payload = {
             'from': os.getenv('AVARA_STORE_EMAIL_FROM', 'AVARA Orders <onboarding@resend.dev>'),
@@ -1595,7 +1605,26 @@ def queue_customer_email(background_tasks, contact, kind: str, details: dict | N
     return True
 
 
+def _brevo_sender() -> dict:
+    """Sender for Brevo: BREVO_SENDER_EMAIL (a sender verified in Brevo), else the owner's Gmail."""
+    raw = os.getenv('BREVO_SENDER_EMAIL', '').strip() or OWNER_CONTACT_EMAIL
+    match = re.fullmatch(r'\s*(.*?)\s*<([^>]+)>\s*', raw)
+    name, email = (match.group(1) or 'AVARA', match.group(2)) if match else ('AVARA', raw)
+    return {'name': name or 'AVARA', 'email': email.strip()}
+
+
 def _send_text_email(to_email: str, subject: str, body: str, transport: str):
+    if transport == 'brevo':
+        payload = {'sender': _brevo_sender(), 'to': [{'email': to_email}], 'subject': subject, 'textContent': body,
+                   'replyTo': {'email': OWNER_CONTACT_EMAIL}}
+        req = urllib.request.Request('https://api.brevo.com/v3/smtp/email', data=json.dumps(payload).encode(), headers={
+            'api-key': os.environ['BREVO_API_KEY'].strip(), 'Content-Type': 'application/json',
+            'Accept': 'application/json', 'User-Agent': 'AVARA-Storefront/1.0',
+        }, method='POST')
+        with urllib.request.urlopen(req, timeout=10) as response:
+            if not json.load(response).get('messageId'):
+                raise ValueError('Missing email provider message ID')
+        return
     if transport == 'resend':
         payload = {'from': os.getenv('AVARA_STORE_EMAIL_FROM', 'AVARA Orders <onboarding@resend.dev>'),
                    'to': [to_email], 'subject': subject, 'text': body}
@@ -1620,7 +1649,7 @@ def _send_text_email(to_email: str, subject: str, body: str, transport: str):
 def _deliver_customer_email(user_id, to_email, kind, subject, body, ref):
     transport, status, error = email_transport(), 'sent', None
     if not transport:
-        status, error = 'not_configured', 'Set RESEND_API_KEY on Render to send customer emails.'
+        status, error = 'not_configured', 'Set BREVO_API_KEY (free, no domain needed) or RESEND_API_KEY on Render to send emails.'
     else:
         try:
             _send_text_email(to_email, subject, body, transport)
