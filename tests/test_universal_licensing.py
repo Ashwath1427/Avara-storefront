@@ -627,12 +627,12 @@ class AppAccountAndEmailTests(StoreTestCase):
                             body=json.loads(request.data))
             return Reply()
 
-        with patch.dict(os.environ, {'BREVO_API_KEY': 'xkeysib-test', 'BREVO_SENDER_EMAIL': 'AVARA <owner@example.test>'}), \
+        with patch.dict(os.environ, {'BREVO_API_KEY': 'brevo-test-key', 'BREVO_SENDER_EMAIL': 'AVARA <owner@example.test>'}), \
              patch.object(server.urllib.request, 'urlopen', side_effect=fake_urlopen):
             self.assertEqual(server.email_transport(), 'brevo')
             server._send_text_email('buyer@example.test', 'Hello', 'Body text', 'brevo')
         self.assertEqual(captured['url'], 'https://api.brevo.com/v3/smtp/email')
-        self.assertEqual(captured['headers']['api-key'], 'xkeysib-test')
+        self.assertEqual(captured['headers']['api-key'], 'brevo-test-key')
         self.assertEqual(captured['body']['sender'], {'name': 'AVARA', 'email': 'owner@example.test'})
         self.assertEqual(captured['body']['to'], [{'email': 'buyer@example.test'}])
 
