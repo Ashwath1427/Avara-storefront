@@ -1555,6 +1555,9 @@ def _date(seconds) -> str:
 
 
 OWNER_CONTACT_EMAIL = os.environ.get('AVARA_OWNER_EMAIL', 'kasula.ashwath3180076@gmail.com')
+# All owners (comma-separated on Render: AVARA_OWNER_EMAILS=first@gmail.com,second@gmail.com). The first is the main contact.
+OWNER_EMAILS = [item.strip().lower() for item in os.environ.get('AVARA_OWNER_EMAILS', OWNER_CONTACT_EMAIL + ',saitheonepiece@gmail.com').split(',')
+                if re.fullmatch(r'[^@\s,;<>]+@[^@\s,;<>]+\.[A-Za-z]{2,}', item.strip())] or [OWNER_CONTACT_EMAIL]
 
 
 def customer_email_body(kind: str, name: str, details: dict) -> str:
@@ -1622,7 +1625,13 @@ def _deliver_customer_email(user_id, to_email, kind, subject, body, ref):
         try:
             _send_text_email(to_email, subject, body, transport)
         except HTTPError as exc:
-            status, error = 'failed', f'Email provider HTTP {exc.code}'
+            reason = ''
+            try:
+                detail = json.loads(exc.read(2000) or b'{}')
+                reason = str(detail.get('message') or detail.get('error') or detail.get('name') or '')[:220]
+            except Exception:
+                pass
+            status, error = 'failed', f'Email provider HTTP {exc.code}' + (f': {reason}' if reason else '')
         except (OSError, ValueError, KeyError) as exc:
             status, error = 'failed', type(exc).__name__
     if status != 'sent':
@@ -1709,7 +1718,7 @@ def public_plans(response: Response):
     response.headers['Cache-Control'] = 'public, max-age=300'
     with db() as con:
         plans = plan_catalog(con)
-    return {'currency': 'INR', 'payment': 'manual', 'plans': plans}
+    return {'currency': 'INR', 'payment': 'manual', 'plans': plans, 'owner_emails': OWNER_EMAILS}
 
 
 class InstallationAccount(BaseModel):
@@ -1876,6 +1885,14 @@ def register_installation(data: InstallationRegistration, request: Request, resp
         payload, code_info = installation_status(con, inst_id, data.token, now)
         account = installation_account(con, inst_id)
     if new_order:
+        who = f'{contact[1]} <{contact[2]}>' if contact else 'a customer (no account email)'
+        for owner in OWNER_EMAILS:
+            queue_customer_email(background_tasks, (None, 'AVARA owner', owner), 'owner_new_order',
+                                 subject=f"New AVARA order #{new_order}: {plan['name']} · ₹{plan['price_inr']:,}",
+                                 body=(f"New order #{new_order} placed in the AVARA app.\n\nPlan: {plan['name']} (₹{plan['price_inr']:,})\n"
+                                       f"Customer: {who}\nComputer: {inst_id}\n\nWhen you receive the payment and the customer's code, "
+                                       "approve it on the owner page: https://avara-storefront.onrender.com/owner\n\nAVARA"),
+                                 ref=f'license_order:{new_order}')
         queue_customer_email(background_tasks, contact, 'order_received',
                              {'plan': plan['name'], 'price_inr': plan['price_inr'], 'code': code_info and code_info.get('code'),
                               'code_expires': code_info and code_info.get('expires_at')}, ref=f'license_order:{new_order}')
