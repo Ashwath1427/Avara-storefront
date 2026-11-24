@@ -1,64 +1,68 @@
 {
   "enabled": true,
-  "version": "1.2.1",
+  "version": "1.2.2",
   "platforms": {
     "windows": {
-      "enabled": false,
-      "version": "1.2.1",
-      "filename": "AVARA-1.2.1-windows-setup.exe",
-      "size": 130910744,
-      "sha256": "6f6dbddc32b7886b3d46f346fd649d067333dc58447f5e0a919d11c8ce4b70a0",
+      "enabled": true,
+      "version": "1.2.2",
+      "filename": "AVARA-1.2.2-windows-setup.exe",
+      "size": 131373514,
+      "sha256": "170abad3cbb90f93033ca4a4b9d3e5d69074fcdc169a2013aca83c8d740a84ac",
       "parts": [
         {
-          "name": "AVARA-1.2.1-windows-setup.exe.part01",
+          "name": "AVARA-1.2.2-windows-setup.exe.part01",
           "size": 41943040,
-          "sha256": "a92aaaa37ca6cc1413c0835b02cc27ccfe93fbf463d404e95357cee0841e10cb"
+          "sha256": "4ebff006bfd8b0b0e16947cdd7421f9652f4d323aaacaf2b2af5e2e61055a207"
         },
         {
-          "name": "AVARA-1.2.1-windows-setup.exe.part02",
+          "name": "AVARA-1.2.2-windows-setup.exe.part02",
           "size": 41943040,
-          "sha256": "7c8958815a393eb7d6ab8636400fa8051b53b94481d5f809eca13a8e241efb8e"
+          "sha256": "ed12617f3a2e8b270700ab20e9f496d2d1758fd5ea2f87279a5c66e9d9a1ebcd"
         },
         {
-          "name": "AVARA-1.2.1-windows-setup.exe.part03",
+          "name": "AVARA-1.2.2-windows-setup.exe.part03",
           "size": 41943040,
-          "sha256": "8963208c9bf9a6da3a81d14480ab87f584fb85a500f756e231d15348881ef6d9"
+          "sha256": "6cd11067085454ba461df6511e940b3373340c4df11060a37bd0d318b7330aef"
         },
         {
-          "name": "AVARA-1.2.1-windows-setup.exe.part04",
-          "size": 5081624,
-          "sha256": "2727c9e178610ff3c368eb72ba745935cf1118e973e4433328b4c93da44026e7"
+          "name": "AVARA-1.2.2-windows-setup.exe.part04",
+          "size": 5544394,
+          "sha256": "791cdb024ef5b0beee3a937baf0e08223f4067a1674b15faeb0400a1e26c0abc"
         }
       ],
-      "requirement": "Windows 10 or 11 (64-bit)",
-      "message": "The Windows download is coming soon."
+      "requirement": "Windows 10 or 11 (64-bit)"
     },
     "mac-arm64": {
       "enabled": true,
-      "version": "1.1.0",
-      "filename": "AVARA-1.1.0-mac-arm64.dmg",
-      "size": 166449697,
-      "sha256": "3d2b613c8e0614a6874cd553ae93497873df417d5c7328bfbf38f17f414d862e",
+      "version": "1.2.2",
+      "filename": "AVARA-1.2.2-mac-arm64.dmg",
+      "size": 176220864,
+      "sha256": "84683ad6d04285a664875ed7f4c4b98ca4bebcd2f65b6f4816c69a93a685441f",
       "parts": [
         {
-          "name": "AVARA-1.1.0-mac-arm64.dmg.part01",
+          "name": "AVARA-1.2.2-mac-arm64.dmg.part01",
           "size": 41943040,
-          "sha256": "c7c1d972a8246c73ffb5bed8fb7813522333cca4e8d6b79dc1c88308f45729d5"
+          "sha256": "0dce2f80988f405aa72ecd7e7c59f2f4a2d3c209c9ad099b978b10fabfdf5bef"
         },
         {
-          "name": "AVARA-1.1.0-mac-arm64.dmg.part02",
+          "name": "AVARA-1.2.2-mac-arm64.dmg.part02",
           "size": 41943040,
-          "sha256": "ad2cecb7083ce183e87b3e532afedf340b583b47773b3f3be241ba73d4ef894c"
+          "sha256": "5ebf4056fd54c1464df9b601c395a04629ce56d23fa4de3f4264319a652305ac"
         },
         {
-          "name": "AVARA-1.1.0-mac-arm64.dmg.part03",
+          "name": "AVARA-1.2.2-mac-arm64.dmg.part03",
           "size": 41943040,
-          "sha256": "18a9bb6821156bf0025dad48f292c8a12e1149e9ea5214897e3910d9f28bf270"
+          "sha256": "63330cf3f2fe7d264d62a5ffe9fd8a61c53ad5bd537cac2ab6cb2b5ac2364189"
         },
         {
-          "name": "AVARA-1.1.0-mac-arm64.dmg.part04",
-          "size": 40620577,
-          "sha256": "bdfcaf3258192d0fa6e1e00ddd1ad219a0c8ee3aadc397958f1293a681aa6e51"
+          "name": "AVARA-1.2.2-mac-arm64.dmg.part04",
+          "size": 41943040,
+          "sha256": "f29ff6aa3742e1aecf5aa4378262a6b86bf4747de4050517d450484a4a774837"
+        },
+        {
+          "name": "AVARA-1.2.2-mac-arm64.dmg.part05",
+          "size": 8448704,
+          "sha256": "dee7dfd596a37aeb3347198d33c10544a8dadda85050d5a63dfd85b016c58b45"
         }
       ],
       "requirement": "Apple Silicon, macOS 14 or later"
