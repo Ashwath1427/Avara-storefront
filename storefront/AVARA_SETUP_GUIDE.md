@@ -18,6 +18,25 @@ Use the welcome setup or **Settings → AI & voice** to choose your provider, sa
 
 Enter API keys only in AVARA's local setup/settings. Never send passwords, activation tokens, or API keys in public messages or screenshots.
 
+## Talk to AVARA (hands-free)
+
+**Quick commands** are done instantly:
+- "Open ChatGPT and make an image of an apple" or "ask ChatGPT …": your request is sent to ChatGPT. Sign in to ChatGPT in your browser once.
+- "Search Google for …", "search YouTube for …", "open my Downloads folder".
+- "Open Notepad and type …". Add "and save it on my desktop" to save it as a file.
+
+**Dictation:**
+- Click into any box and say **"AVARA, type"**. Each phrase is typed as you pause.
+- While dictating: "new line", "full stop", "comma", "question mark", "delete that", "select all", "send it".
+- Say **"stop typing"** to finish.
+- AVARA never types into a password box, and pauses if you switch windows.
+
+**Longer tasks** ("open Gemini and make a video…") are done step by step on your screen. They take a few minutes, and stop with a clear reason if a login, paywall or pop-up blocks them. Some sites need their own paid plan, for example video in Gemini.
+
+**AVARA just does what you ask.** It asks first only before **spending money**, or before a **public or permanent step your command did not ask for**.
+
+Say **"stop"** at any time to stop a task.
+
 ## Approval and subscriptions
 
 Monthly Basic is ₹150 and monthly Pro is ₹200. Six-month Basic is ₹1,000 and six-month Pro is ₹1,400. Plans last 30 or 180 days from approval; renewing early adds to the current expiry.
@@ -39,10 +58,11 @@ Screen understanding, microphone, camera, and app control may need the correspon
 - Plan check cannot connect: confirm internet access and wait a minute for the service to wake. If it persists, send the owner your code and a redacted log.
 - AI offline: test your chosen provider, key, quota, or running Ollama model.
 - Startup failure: read AVARA's log under Local AppData/AVARA/logs on Windows or Library/Application Support/AVARA/logs on Mac. Share only a redacted error excerpt.
+- AVARA window is blank on Windows 10: install Microsoft's free WebView2 Runtime when the installer offers it (or from microsoft.com/edge/webview2), then start AVARA again.
 - Unrecognized publisher warnings: download AVARA only from the official website. Stop if the source is uncertain; do not disable system protection.
 - Windows packaged install: use Settings → Apps → Installed apps and the AVARA uninstaller if provided by your release. Mac: quit AVARA and remove its app from Applications. Saved user data may remain.
 - Older source ZIPs: use the included UNINSTALL_AVARA_WINDOWS.bat/UNINSTALL_AVARA.ps1 only for that installation. Do not remove shared Python, Node.js, or Ollama just to uninstall AVARA.
 
 Before relying on optional features, verify them in Settings/Diagnostics and perform a small real action. A successful app launch does not prove every connected service works.
 
-There are distinct download filenames for Basic, Pro, 6-Month Basic and 6-Month Pro. They share the verified app engine; paid server approval determines actual features and license duration.
+There is one installer for every plan. Your approved plan decides which features and limits you get.
