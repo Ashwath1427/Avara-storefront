@@ -2642,7 +2642,8 @@ def public_download_status(response: Response):
                                           .get('message') or 'Coming soon. Check back shortly.')
         result['platforms'][platform] = {
             'available': available, 'requirement': requirement, 'message': message,
-            **({'filename': release['filename'], 'size': release['size'], 'sha256': release['sha256']} if available else {}),
+            **({'filename': release['filename'], 'size': release['size'], 'sha256': release['sha256'],
+                'version': release.get('version') or UNIVERSAL_RELEASE.get('version')} if available else {}),
         }
     return result
 

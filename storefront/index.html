@@ -450,7 +450,7 @@ async function loadDownloads() {
       const link = card.querySelector('.btn'), detail = card.querySelector('.detail');
       link.setAttribute('aria-disabled', String(!info.available));
       link.textContent = info.available ? 'Download for ' + (card.dataset.platform === 'mac' ? 'Mac' : 'Windows') : 'Not available yet';
-      detail.textContent = info.available ? (result.version ? 'Version ' + result.version + ' · ' : '') + Math.round(info.size / 1048576) + ' MB' : (info.message || '');
+      detail.textContent = info.available ? ((info.version || result.version) ? 'Version ' + (info.version || result.version) + ' · ' : '') + Math.round(info.size / 1048576) + ' MB' : (info.message || '');
     }
   } catch {
     document.querySelectorAll('.download-card .btn').forEach(link => { link.textContent = 'Not available right now'; });
