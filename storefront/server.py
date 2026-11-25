@@ -2693,7 +2693,13 @@ def update_email_body(name: str, version: str, notes: list) -> str:
             "Get it here (your plan carries over, nothing to re-activate):\n"
             f"• Windows: {PUBLIC_SITE_URL}/download/windows\n"
             f"• Mac (Apple Silicon): {PUBLIC_SITE_URL}/download/mac\n\n"
-            "Just run the installer over your current AVARA. Your settings, data and plan stay as they are.\n\n"
+            "Just run the installer over your current AVARA. Your plan, settings, data, API keys and connected accounts "
+            "(Google Calendar, Gmail, Spotify…) all stay as they are.\n\n"
+            "Moving to a new computer? Take everything with you:\n"
+            "1. In AVARA, open Settings → Backup, tick \"Also include my API keys and connected accounts\", choose a "
+            "password and press Back up now. Copy the backup file to the new computer.\n"
+            "2. On the new computer, install AVARA and sign in with the same account. Your plan comes back by itself.\n"
+            "3. Settings → Backup → drop in the backup file and enter the password. Everything is back after AVARA restarts.\n\n"
             "Questions? Reply to this email.\n\n"
             f"{OWNER_SIGNATURE}\nAVARA · Your desktop. Your AI.")
 
@@ -2752,3 +2758,30 @@ def owner_update_emails(request: Request):
         customers = con.execute('SELECT COUNT(*) FROM users').fetchone()[0]
     return {'version': version, 'emailed': sent, 'customers': customers,
             'announces_versions_after': UPDATE_EMAILS_AFTER}
+
+
+# ------------------------------------------------------------------ crash reports from the app (user pressed "Send report")
+class CrashReport(BaseModel):
+    report: str = Field(min_length=1, max_length=60000)
+    version: str = Field(default='', max_length=20)
+    installation: str = Field(default='', max_length=64)
+
+
+_CRASH_SECRETS = re.compile(r"(gsk_[A-Za-z0-9]{8,}|AIza[0-9A-Za-z_\-]{20,}|sk-[A-Za-z0-9_\-]{16,}|xkeysib-[A-Za-z0-9\-]{16,}|"
+                            r"ya29\.[A-Za-z0-9_\-\.]{20,}|1//[A-Za-z0-9_\-]{20,})")
+
+
+@app.post('/api/crash-report')
+def receive_crash_report(data: CrashReport, request: Request, background_tasks: BackgroundTasks):
+    """Email a crash report to the owners. Rate-limited; keys are stripped again in case the app missed one."""
+    ip = client_ip(request)
+    rate_limit(f'crash-ip:{ip}', 5, 3600)
+    transport = email_transport()
+    if not transport:
+        raise HTTPException(503, 'Email is not set up on the AVARA website yet.')
+    body = (f"A customer's AVARA {data.version} closed unexpectedly and they chose to send this report.\n"
+            f"Installation: {data.installation or 'unknown'}\n\n" + _CRASH_SECRETS.sub('[removed]', data.report))
+    subject = f'AVARA crash report ({data.version or "unknown version"})'
+    for owner in OWNER_EMAILS:
+        background_tasks.add_task(_deliver_customer_email, None, owner, 'crash_report', subject, body, data.installation or None)
+    return {'ok': True}
