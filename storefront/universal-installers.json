@@ -1,33 +1,33 @@
 {
   "enabled": true,
-  "version": "1.2.2",
+  "version": "1.2.3",
   "platforms": {
     "windows": {
       "enabled": true,
-      "version": "1.2.2",
-      "filename": "AVARA-1.2.2-windows-setup.exe",
-      "size": 131373514,
-      "sha256": "170abad3cbb90f93033ca4a4b9d3e5d69074fcdc169a2013aca83c8d740a84ac",
+      "version": "1.2.3",
+      "filename": "AVARA-1.2.3-windows-setup.exe",
+      "size": 133201456,
+      "sha256": "e017dc79b87aae05387d4aeec36941abeff605e9f54203067f5264dc82ad4537",
       "parts": [
         {
-          "name": "AVARA-1.2.2-windows-setup.exe.part01",
+          "name": "AVARA-1.2.3-windows-setup.exe.part01",
           "size": 41943040,
-          "sha256": "4ebff006bfd8b0b0e16947cdd7421f9652f4d323aaacaf2b2af5e2e61055a207"
+          "sha256": "7e64dfbf600106938b04e6bc24438fbe9d5a38597e79f545a014fb24a3202563"
         },
         {
-          "name": "AVARA-1.2.2-windows-setup.exe.part02",
+          "name": "AVARA-1.2.3-windows-setup.exe.part02",
           "size": 41943040,
-          "sha256": "ed12617f3a2e8b270700ab20e9f496d2d1758fd5ea2f87279a5c66e9d9a1ebcd"
+          "sha256": "93e3fb057723f9186f1e1af4fd96ef62be032f3d4993b4d04522c8950dcdab85"
         },
         {
-          "name": "AVARA-1.2.2-windows-setup.exe.part03",
+          "name": "AVARA-1.2.3-windows-setup.exe.part03",
           "size": 41943040,
-          "sha256": "6cd11067085454ba461df6511e940b3373340c4df11060a37bd0d318b7330aef"
+          "sha256": "328bd2dc0ce877b159845618a055ea3d9d06bf5a3a0c61a14a75185f2e61b3c3"
         },
         {
-          "name": "AVARA-1.2.2-windows-setup.exe.part04",
-          "size": 5544394,
-          "sha256": "791cdb024ef5b0beee3a937baf0e08223f4067a1674b15faeb0400a1e26c0abc"
+          "name": "AVARA-1.2.3-windows-setup.exe.part04",
+          "size": 7372336,
+          "sha256": "27efb88d90697955d4c51ee662f8f4c91c01c8626924bf9e638b48bcf6221edd"
         }
       ],
       "requirement": "Windows 10 or 11 (64-bit)"
@@ -67,5 +67,14 @@
       ],
       "requirement": "Apple Silicon, macOS 14 or later"
     }
-  }
+  },
+  "notes": [
+    "Phone access works: control AVARA from your phone on the same Wi-Fi",
+    "Attach any file: Word, PDF, PowerPoint, Excel, photos and videos",
+    "A more natural personality, with an Indian English voice",
+    "A bigger, smoother status bar; hold Right Alt to talk",
+    "No more random replies after AVARA speaks",
+    "Your plan follows your account if you reinstall or move to a new PC",
+    "Back up your API keys and connected accounts, protected by a password"
+  ]
 }

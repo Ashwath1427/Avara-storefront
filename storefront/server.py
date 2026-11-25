@@ -2685,14 +2685,22 @@ def _version_key(version) -> tuple:
     return tuple(int(part) for part in re.findall(r'\d+', str(version or '0'))[:4]) or (0,)
 
 
+def _platform_on(key: str, version: str) -> bool:
+    """Is this platform's download already this version? (Mac can follow Windows by a few days.)"""
+    entry = (UNIVERSAL_RELEASE.get('platforms') or {}).get(key) or {}
+    return bool(entry.get('enabled', True)) and str(entry.get('version') or '') == str(version)
+
+
 def update_email_body(name: str, version: str, notes: list) -> str:
     what = ''.join(f'• {str(line).strip()}\n' for line in (notes or []) if str(line).strip())
     return (f"Hi {name or 'there'},\n\n"
             f"A new version of AVARA is out: AVARA {version}.\n\n"
             + (f"What's new:\n{what}\n" if what else '') +
             "Get it here (your plan carries over, nothing to re-activate):\n"
-            f"• Windows: {PUBLIC_SITE_URL}/download/windows\n"
-            f"• Mac (Apple Silicon): {PUBLIC_SITE_URL}/download/mac\n\n"
+            + ''.join(f"• {label}: {PUBLIC_SITE_URL}/download/{slug}\n" if _platform_on(key, version)
+                      else f"• {label}: coming in the next few days\n"
+                      for label, slug, key in (("Windows", "windows", "windows"), ("Mac (Apple Silicon)", "mac", "mac-arm64")))
+            + "\n"
             "Just run the installer over your current AVARA. Your plan, settings, data, API keys and connected accounts "
             "(Google Calendar, Gmail, Spotify…) all stay as they are.\n\n"
             "Moving to a new computer? Take everything with you:\n"
