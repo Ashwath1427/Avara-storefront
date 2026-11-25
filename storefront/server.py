@@ -10,6 +10,7 @@ import secrets
 import smtplib
 import sqlite3
 import ssl
+import threading
 import time
 import urllib.request
 from urllib.error import HTTPError
@@ -86,6 +87,8 @@ async def lifespan(_app):
                 f'Storefront database check failed ({type(exc).__name__}: {hint}). '
                 'Verify the connection and run supabase-persistence.sql.'
             ) from None
+    if os.getenv('RENDER') == 'true' and os.getenv('AVARA_UPDATE_EMAILS', 'on').strip().lower() != 'off':
+        threading.Thread(target=_update_email_loop, name='avara-update-emails', daemon=True).start()
     yield
 
 
@@ -1880,6 +1883,9 @@ def installation_sign_in(mode: str, data: InstallationAccount, request: Request,
                 raise HTTPException(409, 'This computer already has a plan under another AVARA account. Sign in with that account.')
             con.execute('UPDATE app_installations SET user_id=? WHERE id=?', (row[0], inst_id))
             audit(con, f'user:{row[0]}', 'app_account_created' if created_name else 'app_signed_in', inst_id, None, ip)
+            moved_from = carry_plan_to_installation(con, row[0], inst_id, now)
+            if moved_from:  # reinstall / new PC / new version: the customer's plan follows their account
+                audit(con, f'user:{row[0]}', 'plan_moved_to_installation', inst_id, {'from': moved_from}, ip)
             payload, code_info = installation_status(con, inst_id, data.token, now)
             account = installation_account(con, inst_id)
     similar = None
@@ -1975,6 +1981,32 @@ def register_installation(data: InstallationRegistration, request: Request, resp
                              {'plan': plan['name'], 'price_inr': plan['price_inr'], 'code': code_info and code_info.get('code'),
                               'code_expires': code_info and code_info.get('expires_at')}, ref=f'license_order:{new_order}')
     return signed_status(payload, code_info, account)
+
+
+def carry_plan_to_installation(con, user_id: int, inst_id: str, now: int):
+    """A customer signing in on a fresh install (reinstall, new PC, lost data folder) keeps their plan.
+
+    An active or paused, unexpired plan on another installation of the same account moves here with its exact
+    dates. One computer at a time, so one plan can't be shared. Returns the installation it came from, or None.
+    """
+    if con.execute("SELECT 1 FROM entitlements WHERE installation_id=? AND state IN ('active','paused') AND expires_at>?",
+                   (inst_id, now)).fetchone():
+        return None  # this computer already has a working plan
+    source = con.execute(
+        "SELECT e.id, e.installation_id, e.plan_id, e.tier, e.six_month, e.state, e.starts_at, e.expires_at, "
+        "e.paused_at, e.source_order_id FROM entitlements e JOIN app_installations i ON i.id=e.installation_id "
+        "WHERE i.user_id=? AND e.installation_id<>? AND e.state IN ('active','paused') AND e.expires_at>? "
+        "ORDER BY e.expires_at DESC LIMIT 1", (user_id, inst_id, now)).fetchone()
+    if not source:
+        return None
+    own = con.execute('SELECT id FROM entitlements WHERE installation_id=?', (inst_id,)).fetchone()
+    if own:  # an old expired/cancelled plan row on this computer: refresh it from the moving plan
+        con.execute('UPDATE entitlements SET plan_id=?, tier=?, six_month=?, state=?, starts_at=?, expires_at=?, '
+                    'paused_at=?, source_order_id=?, updated_at=? WHERE id=?', (*tuple(source[2:10]), now, own[0]))
+        con.execute("UPDATE entitlements SET state='cancelled', expires_at=?, updated_at=? WHERE id=?", (now, now, source[0]))
+    else:
+        con.execute('UPDATE entitlements SET installation_id=?, updated_at=? WHERE id=?', (inst_id, now, source[0]))
+    return source[1]
 
 
 @app.post('/api/v2/activation/status')
@@ -2637,3 +2669,86 @@ def public_download(platform: str, request: Request):
                  'Content-Disposition': f'attachment; filename="{release["filename"]}"',
                  'ETag': '"' + release['sha256'] + '"'},
     )
+
+
+# ------------------------------------------------------------------ "a new AVARA is out" emails
+# When the website starts with a newer released version than the last one announced, every customer account gets ONE
+# email about it. email_log (kind 'update_released', ref 'version:<v>') remembers who already got it, so restarts never
+# send twice. Brevo's free plan allows 300 emails a day, so at most UPDATE_EMAIL_DAILY_LIMIT go out per day; the rest
+# follow the next day. AVARA_UPDATE_EMAILS=off switches it off.
+UPDATE_EMAILS_AFTER = os.getenv('AVARA_UPDATE_EMAILS_AFTER', '1.2.2')   # 1.2.2 was released before this existed
+UPDATE_EMAIL_DAILY_LIMIT = int(os.getenv('AVARA_UPDATE_EMAIL_DAILY_LIMIT', '250'))
+PUBLIC_SITE_URL = os.getenv('AVARA_PUBLIC_URL', 'https://avara-storefront.onrender.com').rstrip('/')
+
+
+def _version_key(version) -> tuple:
+    return tuple(int(part) for part in re.findall(r'\d+', str(version or '0'))[:4]) or (0,)
+
+
+def update_email_body(name: str, version: str, notes: list) -> str:
+    what = ''.join(f'• {str(line).strip()}\n' for line in (notes or []) if str(line).strip())
+    return (f"Hi {name or 'there'},\n\n"
+            f"A new version of AVARA is out: AVARA {version}.\n\n"
+            + (f"What's new:\n{what}\n" if what else '') +
+            "Get it here (your plan carries over, nothing to re-activate):\n"
+            f"• Windows: {PUBLIC_SITE_URL}/download/windows\n"
+            f"• Mac (Apple Silicon): {PUBLIC_SITE_URL}/download/mac\n\n"
+            "Just run the installer over your current AVARA. Your settings, data and plan stay as they are.\n\n"
+            "Questions? Reply to this email.\n\n"
+            f"{OWNER_SIGNATURE}\nAVARA · Your desktop. Your AI.")
+
+
+def send_update_announcements(now=None, sleep=time.sleep) -> dict:
+    """Email every customer once about the current release. Safe to call any number of times."""
+    version = str(UNIVERSAL_RELEASE.get('version') or '')
+    if os.getenv('AVARA_UPDATE_EMAILS', 'on').strip().lower() == 'off':
+        return {'sent': 0, 'reason': 'switched off'}
+    if not version or not public_downloads_enabled() or _version_key(version) <= _version_key(UPDATE_EMAILS_AFTER):
+        return {'sent': 0, 'reason': 'nothing new to announce', 'version': version}
+    if not email_transport():
+        return {'sent': 0, 'reason': 'email not configured', 'version': version}
+    now = int(now or time.time())
+    ref = f'version:{version}'
+    with db() as con:
+        if not licensing_ready(con):
+            return {'sent': 0, 'reason': 'database not ready'}
+        done = {row[0].lower() for row in con.execute(
+            "SELECT to_email FROM email_log WHERE kind='update_released' AND ref=? AND status='sent'", (ref,))}
+        sent_today = con.execute("SELECT COUNT(*) FROM email_log WHERE kind='update_released' AND status='sent' AND at>?",
+                                 (now - 86400,)).fetchone()[0]
+        customers = [tuple(row) for row in con.execute('SELECT id, name, email FROM users ORDER BY id')]
+    pending = [c for c in customers if c[2] and c[2].lower() not in done]
+    budget = max(0, UPDATE_EMAIL_DAILY_LIMIT - int(sent_today))
+    subject = f'AVARA {version} is out: download the new version'
+    notes = UNIVERSAL_RELEASE.get('notes') or []
+    for user_id, name, email in pending[:budget]:
+        _deliver_customer_email(user_id, email, 'update_released', subject, update_email_body(name, version, notes), ref)
+        sleep(0.4)
+    return {'sent': min(len(pending), budget), 'waiting': max(0, len(pending) - budget), 'version': version}
+
+
+def _update_email_loop():
+    time.sleep(90)  # let the website finish starting first
+    while True:
+        try:
+            result = send_update_announcements()
+            if result.get('sent'):
+                logger.info('Update emails for AVARA %s: %s sent, %s waiting for tomorrow',
+                            result.get('version'), result['sent'], result.get('waiting', 0))
+        except Exception as exc:
+            logger.warning('Update emails failed (%s)', type(exc).__name__)
+        time.sleep(6 * 3600)
+
+
+@app.get('/api/owner/update-emails')
+def owner_update_emails(request: Request):
+    """How many customers have been emailed about the current release."""
+    owner_session(request)
+    version = str(UNIVERSAL_RELEASE.get('version') or '')
+    with db() as con:
+        require_licensing(con)
+        sent = con.execute("SELECT COUNT(*) FROM email_log WHERE kind='update_released' AND ref=? AND status='sent'",
+                           (f'version:{version}',)).fetchone()[0]
+        customers = con.execute('SELECT COUNT(*) FROM users').fetchone()[0]
+    return {'version': version, 'emailed': sent, 'customers': customers,
+            'announces_versions_after': UPDATE_EMAILS_AFTER}
