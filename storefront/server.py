@@ -1624,7 +1624,7 @@ OWNER_EMAILS = [item.strip().lower() for item in os.environ.get('AVARA_OWNER_EMA
                 if re.fullmatch(r'[^@\s,;<>]+@[^@\s,;<>]+\.[A-Za-z]{2,}', item.strip())] or [OWNER_CONTACT_EMAIL]
 
 
-OWNER_SIGNATURE = os.getenv('AVARA_OWNER_SIGNATURE', 'Ashwath').strip() or 'Ashwath'
+OWNER_SIGNATURE = os.getenv('AVARA_OWNER_SIGNATURE', 'Team AVARA').strip() or 'Team AVARA'
 
 
 def _clause(text) -> str:
@@ -1641,7 +1641,7 @@ def customer_email_body(kind: str, name: str, details: dict) -> str:
                 "Keep AVARA open and online, and it will unlock in a few seconds.\n\n"
                 f"Plan: {plan}\nActive until: {until}\n\n"
                 "If it doesn't unlock, just reply to this email and I'll sort it out.\n\n"
-                f"Welcome to AVARA!\n{OWNER_SIGNATURE}\nAVARA · Your desktop. Your AI.")
+                f"Welcome to AVARA!\n{OWNER_SIGNATURE}\nYour desktop. Your AI.")
     if kind == 'on_hold':
         need = details.get('need')
         return (f"Hi {name},\n\n"
@@ -1650,7 +1650,7 @@ def customer_email_body(kind: str, name: str, details: dict) -> str:
                 + (f"What I need from you: {_clause(need)}.\n\n" if need else '') +
                 "Please note: your code expires 48 hours after it was created. If it runs out, just choose your plan "
                 "again in AVARA to get a new code.\n\n"
-                f"Thanks for your patience,\n{OWNER_SIGNATURE}\nAVARA · Your desktop. Your AI.")
+                f"Thanks for your patience,\n{OWNER_SIGNATURE}\nYour desktop. Your AI.")
     if kind == 'rejected':
         code, reason = details.get('code') or '', details.get('reason')
         refund = ''
@@ -1663,7 +1663,7 @@ def customer_email_body(kind: str, name: str, details: dict) -> str:
                 + (f" because {_clause(reason)}" if reason else '') + ".\n\n" + refund +
                 "If you'd like to order again, just open AVARA and choose your plan to get a new code.\n\n"
                 "If you think this was a mistake, reply to this email and I'll help.\n\n"
-                f"Thanks,\n{OWNER_SIGNATURE}\nAVARA · Your desktop. Your AI.")
+                f"Thanks,\n{OWNER_SIGNATURE}\nYour desktop. Your AI.")
     lines = {
         'order_received': [f'Thank you for choosing AVARA {plan}' + (f' (₹{price:,})' if price else '') + '.',
                            f"Your one-time code is {details.get('code')}." if details.get('code') else '',
@@ -2790,7 +2790,7 @@ def update_email_body(name: str, version: str, notes: list, email: dict | None =
             "restarts.\n\n"
             "Thank you to everyone who sent a review or a crash report: they shaped this update. Questions or problems? "
             "Just reply to this email.\n\n"
-            f"{OWNER_SIGNATURE}\nAVARA · Your desktop. Your AI.")
+            f"{OWNER_SIGNATURE}\nYour desktop. Your AI.")
 
 
 def send_update_announcements(now=None, sleep=time.sleep) -> dict:
