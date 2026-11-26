@@ -1640,13 +1640,13 @@ def customer_email_body(kind: str, name: str, details: dict) -> str:
                 f"Thanks for your payment! Your order {details.get('code') or ''} is now approved.\n\n"
                 "Keep AVARA open and online, and it will unlock in a few seconds.\n\n"
                 f"Plan: {plan}\nActive until: {until}\n\n"
-                "If it doesn't unlock, just reply to this email and I'll sort it out.\n\n"
+                "If it doesn't unlock, just reply to this email and we'll sort it out.\n\n"
                 f"Welcome to AVARA!\n{OWNER_SIGNATURE}\nYour desktop. Your AI.")
     if kind == 'on_hold':
         need = details.get('need')
         return (f"Hi {name},\n\n"
                 f"Thanks for your order! I've put it on hold for now because {_clause(details.get('reason'))}.\n\n"
-                "Nothing is lost. Once this is sorted, I'll approve it and AVARA will unlock straight away.\n\n"
+                "Nothing is lost. Once this is sorted, we'll approve it and AVARA will unlock straight away.\n\n"
                 + (f"What I need from you: {_clause(need)}.\n\n" if need else '') +
                 "Please note: your code expires 48 hours after it was created. If it runs out, just choose your plan "
                 "again in AVARA to get a new code.\n\n"
@@ -1662,7 +1662,7 @@ def customer_email_body(kind: str, name: str, details: dict) -> str:
                 f"Your AVARA order {code} for the {plan} plan has been cancelled"
                 + (f" because {_clause(reason)}" if reason else '') + ".\n\n" + refund +
                 "If you'd like to order again, just open AVARA and choose your plan to get a new code.\n\n"
-                "If you think this was a mistake, reply to this email and I'll help.\n\n"
+                "If you think this was a mistake, reply to this email and we'll help.\n\n"
                 f"Thanks,\n{OWNER_SIGNATURE}\nYour desktop. Your AI.")
     lines = {
         'order_received': [f'Thank you for choosing AVARA {plan}' + (f' (₹{price:,})' if price else '') + '.',
