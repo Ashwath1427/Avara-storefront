@@ -2773,9 +2773,15 @@ def update_email_body(name: str, version: str, notes: list, email: dict | None =
                                                  ("Mac (Apple Silicon)", "mac", "mac-arm64")))
     return (f"Hi {name or 'there'},\n\n"
             f"{intro}\n\n" + act + body +
-            "Get it here (your plan carries over, nothing to re-activate):\n" + downloads + "\n"
-            "Just run the installer over your current AVARA (close AVARA first). Your plan, settings, data, API keys and "
-            "connected accounts (Google Calendar, Gmail, Spotify…) all stay as they are.\n\n"
+            "How to update (about 2 minutes):\n"
+            "1. Close AVARA.\n"
+            "2. Delete the old AVARA. Windows: Settings → Apps → Installed apps → AVARA → Uninstall. "
+            "Mac: drag AVARA from Applications to the Bin.\n"
+            "3. Download the new AVARA and install it:\n" + downloads +
+            "4. Open AVARA. Your plan, settings, chats, API keys and connected accounts (Google Calendar, Gmail, "
+            "Spotify…) are all still there: they're saved on your computer, not inside the app, so deleting the old "
+            "AVARA never removes them. If AVARA asks you to sign in, use the same email and your plan comes back by "
+            "itself.\n\n"
             "Moving to a new computer? Take everything with you:\n"
             "1. In AVARA, open Settings → Backup, tick \"Also include my API keys and connected accounts\", choose a "
             "password and press Back up now. Copy the backup file to the new computer.\n"
