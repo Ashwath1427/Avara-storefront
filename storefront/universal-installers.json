@@ -1,80 +1,111 @@
 {
   "enabled": true,
-  "version": "1.2.3",
+  "version": "1.2.4",
   "platforms": {
     "windows": {
       "enabled": true,
-      "version": "1.2.3",
-      "filename": "AVARA-1.2.3-windows-setup.exe",
-      "size": 133211470,
-      "sha256": "e1a88601601d9cd0b2cf0cc4e0cb203e6f46fcfd529ba31d6794ef2b44f30fbb",
+      "version": "1.2.4",
+      "filename": "AVARA-1.2.4-windows-setup.exe",
+      "size": 133223224,
+      "sha256": "eb897c6341612504e590cb2c1e7a4290f1318ea88c13dbe982aff9010cdaefb8",
       "parts": [
         {
-          "name": "AVARA-1.2.3-fix1-windows-setup.exe.part01",
+          "name": "AVARA-1.2.4-windows-setup.exe.part01",
           "size": 41943040,
-          "sha256": "ba7c72f03ef983a5789d70dbf1aa5cb407d538bb94a034b2f6c3a3b2dc875b0f"
+          "sha256": "248f8cedbe7f44958aa8796d44e5708909ff2239d2f6b1cf318c0a8cd9b3ae14"
         },
         {
-          "name": "AVARA-1.2.3-fix1-windows-setup.exe.part02",
+          "name": "AVARA-1.2.4-windows-setup.exe.part02",
           "size": 41943040,
-          "sha256": "9f4c5164b19743a3626b28e179dc3ec47fd83475d4396e4b8b201e77a13d05f6"
+          "sha256": "c891d0190794a69551882daf58d22e8705d8f886d0431cc6d218c5ecc19bee8f"
         },
         {
-          "name": "AVARA-1.2.3-fix1-windows-setup.exe.part03",
+          "name": "AVARA-1.2.4-windows-setup.exe.part03",
           "size": 41943040,
-          "sha256": "c367a3f8e2f50f170cb4b393a575738e2eaad03034df753893cf21cdf08d45f7"
+          "sha256": "de4c2d3515d98d7de07ee7e08c3a8e690a39d9e9ac22cfa635c316540749f207"
         },
         {
-          "name": "AVARA-1.2.3-fix1-windows-setup.exe.part04",
-          "size": 7382350,
-          "sha256": "d3a3723d124852c5825525c206ab76dd8838d77a3a7e18691939c6da36bb7964"
+          "name": "AVARA-1.2.4-windows-setup.exe.part04",
+          "size": 7394104,
+          "sha256": "a08aec90e96d62c41466b31e29bf8f1e0dab5f3540f892207e5ec404643ca8f0"
         }
       ],
       "requirement": "Windows 10 or 11 (64-bit)"
     },
     "mac-arm64": {
       "enabled": true,
-      "version": "1.2.2",
-      "filename": "AVARA-1.2.2-mac-arm64.dmg",
-      "size": 176220864,
-      "sha256": "84683ad6d04285a664875ed7f4c4b98ca4bebcd2f65b6f4816c69a93a685441f",
+      "version": "1.2.4",
+      "filename": "AVARA-1.2.4-mac-arm64.dmg",
+      "size": 177326888,
+      "sha256": "3735bddfd7d636917ca0cf7eae684427328ff32a16e2b2baf56dca05d5bd47eb",
       "parts": [
         {
-          "name": "AVARA-1.2.2-mac-arm64.dmg.part01",
+          "name": "AVARA-1.2.4-mac-arm64.dmg.part01",
           "size": 41943040,
-          "sha256": "0dce2f80988f405aa72ecd7e7c59f2f4a2d3c209c9ad099b978b10fabfdf5bef"
+          "sha256": "8d69096f2b51b8f79b26b5098c1355bb2f6cf073933aeb444083813e9764a7f9"
         },
         {
-          "name": "AVARA-1.2.2-mac-arm64.dmg.part02",
+          "name": "AVARA-1.2.4-mac-arm64.dmg.part02",
           "size": 41943040,
-          "sha256": "5ebf4056fd54c1464df9b601c395a04629ce56d23fa4de3f4264319a652305ac"
+          "sha256": "a3f9e9409a1bd068a178437d3249e17680d91659ea472b0b60797bc052dee710"
         },
         {
-          "name": "AVARA-1.2.2-mac-arm64.dmg.part03",
+          "name": "AVARA-1.2.4-mac-arm64.dmg.part03",
           "size": 41943040,
-          "sha256": "63330cf3f2fe7d264d62a5ffe9fd8a61c53ad5bd537cac2ab6cb2b5ac2364189"
+          "sha256": "ecad0ffc6a7e91db46610a333d256b5ea774c76b77f691f86cd295890a80eb6a"
         },
         {
-          "name": "AVARA-1.2.2-mac-arm64.dmg.part04",
+          "name": "AVARA-1.2.4-mac-arm64.dmg.part04",
           "size": 41943040,
-          "sha256": "f29ff6aa3742e1aecf5aa4378262a6b86bf4747de4050517d450484a4a774837"
+          "sha256": "b55fa37e37d203979047b3ac74d7deda3fc129d4def30d3fdbafefc3710c8e3e"
         },
         {
-          "name": "AVARA-1.2.2-mac-arm64.dmg.part05",
-          "size": 8448704,
-          "sha256": "dee7dfd596a37aeb3347198d33c10544a8dadda85050d5a63dfd85b016c58b45"
+          "name": "AVARA-1.2.4-mac-arm64.dmg.part05",
+          "size": 9554728,
+          "sha256": "7ff982d4badd2143ad32b2bee7890b6d9ab5193138e9ef57828992c3d98753b7"
         }
       ],
       "requirement": "Apple Silicon, macOS 14 or later"
     }
   },
   "notes": [
-    "Phone access works: control AVARA from your phone on the same Wi-Fi",
-    "Attach any file: Word, PDF, PowerPoint, Excel, photos and videos",
-    "A more natural personality, with an Indian English voice",
-    "A bigger, smoother status bar; hold Right Alt to talk",
-    "No more random replies after AVARA speaks",
-    "Your plan follows your account if you reinstall or move to a new PC",
-    "Back up your API keys and connected accounts, protected by a password"
-  ]
+    "Long questions get a full answer in seconds",
+    "AVARA no longer mistakes your questions for commands",
+    "Recovers by itself if it ever closes unexpectedly",
+    "Focus mode: just type your PIN to unlock early",
+    "Attach any file, including videos",
+    "Appearance colours and light mode work in every style"
+  ],
+  "email": {
+    "subject": "Important AVARA update: please install 1.2.4",
+    "intro": "AVARA 1.2.4 is out for Windows and Mac. We read every review and crash report you sent, fixed the problems you told us about, and added new security and stability protection.",
+    "urgent": true,
+    "sections": [
+      {
+        "title": "Fixed from your reviews",
+        "items": [
+          "Long questions now get a full answer in seconds (no more messages about Groq, Ollama or a local model)",
+          "AVARA no longer mistakes questions for commands: \"time complexity\" isn't the clock, \"write a poem about rain\" isn't the weather, and \"how do I mute someone on Instagram\" won't mute your computer",
+          "Settings → Appearance: colours now apply in every interface style, and Light mode works",
+          "Focus mode: to end a locked session early, just type your PIN on the lock screen"
+        ]
+      },
+      {
+        "title": "Security & stability",
+        "items": [
+          "If AVARA ever closes unexpectedly, it now reopens by itself within a few seconds",
+          "AVARA only types into other apps when you clearly ask it to (\"type …\")",
+          "Crash reports are only sent with your OK, with keys and passwords removed, and now tell us exactly what went wrong so we can fix it faster"
+        ]
+      },
+      {
+        "title": "New",
+        "items": [
+          "Attach any file in chat, even videos: ask \"what is this video about?\"",
+          "AVARA remembers your name: ask \"do you know me?\"",
+          "Mac (Apple Silicon) gets the same update today"
+        ]
+      }
+    ]
+  }
 }

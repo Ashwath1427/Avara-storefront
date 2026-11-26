@@ -94,6 +94,56 @@ async def lifespan(_app):
 
 app = FastAPI(docs_url=None, redoc_url=None, openapi_url=None, lifespan=lifespan)
 
+# ------------------------------------------------------------------ memory watch
+# Render's free plan restarts the site above 512 MB (it happened once, 26 Nov 2026, cause unknown). If memory climbs
+# past MEMORY_WARN_MB, the log names every request in progress at that moment, so a repeat can be traced.
+MEMORY_WARN_MB = int(os.getenv('AVARA_MEMORY_WARN_MB', '300'))
+_in_flight: dict[int, tuple[str, float]] = {}
+
+
+def memory_mb() -> int:
+    """This process's memory in MB (Linux /proc; 0 where unavailable)."""
+    try:
+        with open('/proc/self/statm') as statm:
+            return int(statm.read().split()[1]) * os.sysconf('SC_PAGE_SIZE') // 1_048_576
+    except (OSError, ValueError, AttributeError, IndexError):
+        return 0
+
+
+def memory_report() -> str | None:
+    """A warning line when memory is high: how much, and which requests are running."""
+    used = memory_mb()
+    if used < MEMORY_WARN_MB:
+        return None
+    now = time.monotonic()
+    running = ', '.join(f'{path} ({now - started:.0f}s)' for path, started in list(_in_flight.values())) or 'none'
+    return f'High memory: {used} MB of 512. Requests in progress: {running}'
+
+
+def _memory_watch():
+    while True:
+        time.sleep(5)
+        try:
+            line = memory_report()
+            if line:
+                logger.warning(line)
+        except Exception:
+            pass
+
+
+@app.middleware('http')
+async def track_requests(request: Request, call_next):
+    key = id(request)
+    _in_flight[key] = (f'{request.method} {request.url.path}', time.monotonic())
+    try:
+        return await call_next(request)
+    finally:
+        _in_flight.pop(key, None)
+
+
+if os.getenv('RENDER') == 'true':
+    threading.Thread(target=_memory_watch, name='memory-watch', daemon=True).start()
+
 
 class StoreConnection(sqlite3.Connection):
     """Commit or roll back a with-block, then release the SQLite file handle."""
@@ -2692,24 +2742,48 @@ def _platform_on(key: str, version: str) -> bool:
     return bool(entry.get('enabled', True)) and str(entry.get('version') or '') == str(version)
 
 
-def update_email_body(name: str, version: str, notes: list) -> str:
-    what = ''.join(f'• {str(line).strip()}\n' for line in (notes or []) if str(line).strip())
+# The "new AVARA is out" email is a template filled from the release list (universal-installers.json). Each release
+# can set an "email" block; everything in it is optional:
+#   "email": {"subject": "...", "intro": "...", "urgent": true,
+#             "sections": [{"title": "What's new", "items": ["...", "..."]}, {"title": "What we fixed", "items": [...]}]}
+# Without it, the plain "notes" list is used as "What's new".
+def update_email_parts(version: str, notes: list, email: dict | None = None) -> tuple[str, str, bool, list]:
+    """(subject, intro, urgent, [(title, items)]) for a release."""
+    email = email or {}
+    urgent = bool(email.get('urgent'))
+    subject = str(email.get('subject') or (f'Important AVARA update: please install {version}' if urgent
+                                           else f'AVARA {version} is out: download the new version')).strip()
+    intro = str(email.get('intro') or f'A new version of AVARA is out: AVARA {version}.').strip()
+    sections = [(str(section.get('title') or '').strip(), [str(item).strip() for item in section.get('items') or []
+                                                           if str(item).strip()])
+                for section in email.get('sections') or [] if isinstance(section, dict)]
+    sections = [(title, items) for title, items in sections if title and items]
+    if not sections and notes:
+        sections = [("What's new", [str(line).strip() for line in notes if str(line).strip()])]
+    return subject[:150], intro, urgent, sections
+
+
+def update_email_body(name: str, version: str, notes: list, email: dict | None = None) -> str:
+    _, intro, urgent, sections = update_email_parts(version, notes, email)
+    body = ''.join(f"{title}:\n" + ''.join(f"• {item}\n" for item in items) + "\n" for title, items in sections)
+    act = "Please install it as soon as possible: it takes about a minute.\n\n" if urgent else ''
+    downloads = ''.join(f"• {label}: {PUBLIC_SITE_URL}/download/{slug}\n" if _platform_on(key, version)
+                        else f"• {label}: coming in the next few days\n"
+                        for label, slug, key in (("Windows", "windows", "windows"),
+                                                 ("Mac (Apple Silicon)", "mac", "mac-arm64")))
     return (f"Hi {name or 'there'},\n\n"
-            f"A new version of AVARA is out: AVARA {version}.\n\n"
-            + (f"What's new:\n{what}\n" if what else '') +
-            "Get it here (your plan carries over, nothing to re-activate):\n"
-            + ''.join(f"• {label}: {PUBLIC_SITE_URL}/download/{slug}\n" if _platform_on(key, version)
-                      else f"• {label}: coming in the next few days\n"
-                      for label, slug, key in (("Windows", "windows", "windows"), ("Mac (Apple Silicon)", "mac", "mac-arm64")))
-            + "\n"
-            "Just run the installer over your current AVARA. Your plan, settings, data, API keys and connected accounts "
-            "(Google Calendar, Gmail, Spotify…) all stay as they are.\n\n"
+            f"{intro}\n\n" + act + body +
+            "Get it here (your plan carries over, nothing to re-activate):\n" + downloads + "\n"
+            "Just run the installer over your current AVARA (close AVARA first). Your plan, settings, data, API keys and "
+            "connected accounts (Google Calendar, Gmail, Spotify…) all stay as they are.\n\n"
             "Moving to a new computer? Take everything with you:\n"
             "1. In AVARA, open Settings → Backup, tick \"Also include my API keys and connected accounts\", choose a "
             "password and press Back up now. Copy the backup file to the new computer.\n"
             "2. On the new computer, install AVARA and sign in with the same account. Your plan comes back by itself.\n"
-            "3. Settings → Backup → drop in the backup file and enter the password. Everything is back after AVARA restarts.\n\n"
-            "Questions? Reply to this email.\n\n"
+            "3. Settings → Backup → drop in the backup file and enter the password. Everything is back after AVARA "
+            "restarts.\n\n"
+            "Thank you to everyone who sent a review or a crash report: they shaped this update. Questions or problems? "
+            "Just reply to this email.\n\n"
             f"{OWNER_SIGNATURE}\nAVARA · Your desktop. Your AI.")
 
 
@@ -2734,10 +2808,11 @@ def send_update_announcements(now=None, sleep=time.sleep) -> dict:
         customers = [tuple(row) for row in con.execute('SELECT id, name, email FROM users ORDER BY id')]
     pending = [c for c in customers if c[2] and c[2].lower() not in done]
     budget = max(0, UPDATE_EMAIL_DAILY_LIMIT - int(sent_today))
-    subject = f'AVARA {version} is out: download the new version'
     notes = UNIVERSAL_RELEASE.get('notes') or []
+    email_info = UNIVERSAL_RELEASE.get('email') if isinstance(UNIVERSAL_RELEASE.get('email'), dict) else None
+    subject = update_email_parts(version, notes, email_info)[0]
     for user_id, name, email in pending[:budget]:
-        _deliver_customer_email(user_id, email, 'update_released', subject, update_email_body(name, version, notes), ref)
+        _deliver_customer_email(user_id, email, 'update_released', subject, update_email_body(name, version, notes, email_info), ref)
         sleep(0.4)
     return {'sent': min(len(pending), budget), 'waiting': max(0, len(pending) - budget), 'version': version}
 
